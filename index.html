@@ -957,17 +957,29 @@ function buildDataForYear(ano){
   byName.forEach((entry, nome)=>{
     const latestAnalysis = latestQualityVersion(nome);
     const latestUpload = latestUploadForMunicipio(nome);
+    const refDate = latestUpload && latestUpload.documentDate ? latestUpload.documentDate : null;
+    const refYear = refDate ? Number(String(refDate).slice(0,4)) : null;
+    // Só aplica os dados de envio/análise se a data do documento bater com o ano de referência selecionado
+    // (ou se não houver data de documento informada, mantém visível por padrão para não esconder registros)
+    if(refYear && refYear !== ano) return;
+    const linkFromUpload = (latestUpload && latestUpload.driveFiles && latestUpload.driveFiles[0] && latestUpload.driveFiles[0].url) || null;
     if(latestAnalysis){
       entry.status = "ok";
       entry.versao = latestAnalysis.rotulo || entry.versao;
       entry.atualizacao = latestAnalysis.dataAnalise || entry.atualizacao;
-      entry.link = latestAnalysis.linkDrive || entry.link;
+      entry.link = latestAnalysis.linkDrive || linkFromUpload || entry.link;
       entry.obs = "Analisado tecnicamente";
+      if(refDate){
+        const days = daysSince(refDate);
+        if(days !== null && days > 365){
+          entry.obs = `Analisado tecnicamente — documento de ${toBRDate(refDate)}, há mais de 1 ano da confecção`;
+        }
+      }
     }else if(latestUpload){
       entry.status = "warn";
       entry.versao = latestUpload.label || entry.versao;
       entry.atualizacao = latestUpload.documentDate || latestUpload.registeredAt || entry.atualizacao;
-      entry.link = (latestUpload.driveFiles && latestUpload.driveFiles[0] && latestUpload.driveFiles[0].url) || entry.link;
+      entry.link = linkFromUpload || entry.link;
       entry.obs = "Recebido — aguardando análise técnica";
     }
   });
@@ -977,6 +989,12 @@ function latestUploadForMunicipio(nome){
   const items = getUploadQueue().filter(u=>u.municipio === nome);
   if(!items.length) return null;
   return items.slice().sort((a,b)=>String(a.registeredAt||"").localeCompare(String(b.registeredAt||""))).pop();
+}
+function daysSince(isoDate){
+  const d = new Date(isoDate);
+  if(isNaN(d.getTime())) return null;
+  const diffMs = Date.now() - d.getTime();
+  return Math.floor(diffMs / (1000*60*60*24));
 }
 
 /* ============================================================================
