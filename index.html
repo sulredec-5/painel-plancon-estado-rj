@@ -780,7 +780,7 @@ Formato obrigatório:
           </div>
           <div class="analysis-table-wrap">
             <table class="analysis-table">
-              <thead><tr><th>Data da análise</th><th>Município</th><th>Versão</th><th>Documento</th><th>Status</th></tr></thead>
+              <thead><tr><th>Data da análise</th><th>Município</th><th>Versão</th><th>Documento</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody id="analysisQueueBody"></tbody>
             </table>
           </div>
@@ -2270,7 +2270,7 @@ function renderAnalysisQueue(){
   if(!tbody) return;
   const items = getStoredAnalyses();
   if(!items.length){
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">Nenhuma análise técnica registrada nesta estação.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Nenhuma análise técnica registrada nesta estação.</td></tr>`;
     return;
   }
   tbody.innerHTML = items.slice().reverse().map(a=>`
@@ -2280,7 +2280,27 @@ function renderAnalysisQueue(){
       <td>${a.rotulo}<br><span class="dim">${a.analista ? `Analista: ${a.analista}` : ""}</span></td>
       <td>${a.linkDrive ? `<a href="${a.linkDrive}" target="_blank" rel="noopener">${a.documento || "Documento no Drive"}</a>` : (a.documento || "—")}</td>
       <td><span class="analysis-chip">Análise registrada</span>${a.syncStatus ? `<br><span class="dim">${a.syncStatus}</span>` : ""}</td>
+      <td><button type="button" class="upload-action-btn danger analysis-remove-btn" data-analysis-id="${a.id}" title="Remove apenas deste navegador. Não apaga da planilha-manifesto.">Remover</button></td>
     </tr>`).join("");
+  tbody.querySelectorAll(".analysis-remove-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>removeAnalysis(btn.dataset.analysisId));
+  });
+}
+function removeAnalysis(id){
+  if(!id) return;
+  const items = getStoredAnalyses();
+  const item = items.find(a=>a.id === id);
+  if(!item) return;
+  const confirmMsg = `Remover a análise de "${item.municipio}" (${item.rotulo})?\n\nIsso remove apenas o registro deste navegador. A planilha-manifesto e os critérios já enviados não são apagados automaticamente — se precisar removê-los de lá também, é preciso editar a planilha diretamente.`;
+  if(!confirm(confirmMsg)) return;
+  const updated = items.filter(a=>a.id !== id);
+  setStoredAnalyses(updated);
+  if(QUALITY_HISTORY[item.municipio]){
+    QUALITY_HISTORY[item.municipio] = QUALITY_HISTORY[item.municipio].filter(v=>v.id !== id);
+    if(!QUALITY_HISTORY[item.municipio].length) delete QUALITY_HISTORY[item.municipio];
+  }
+  renderAnalysisQueue();
+  renderStats(); renderTable(); updateMapColors(); renderQualityMeta(); renderQualityMatrix(); renderCompareCards(); renderCompareMunicipioStatus();
 }
 function buildAnalysisFromForm(){
   const criterios = {};
