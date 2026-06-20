@@ -2132,7 +2132,7 @@ async function registerUpload(){
 function populateAnalysisMunicipios(force=false){
   const sel = document.getElementById("analysisMunicipio");
   if(sel && (force || !sel.options.length)){
-    sel.innerHTML = REDEC.length ? REDEC.map(m=>`<option value="${m}">${m}</option>`).join("") : `<option value="">Cadastre um município primeiro</option>`;
+    sel.innerHTML = REDEC.length ? REDEC.map(m=>`<option value="${m}">${m}</option>`).join("") : `<option value="">Cadastre um município ou use a aba "Importar JSON"</option>`;
   }
 }
 function normalizeAnalysisStatus(value){
@@ -2189,7 +2189,8 @@ function setStoredAnalyses(items){
 }
 function normalizeAnalysisPayload(raw){
   const a = raw || {};
-  const municipio = a.municipio || a.município || "";
+  const municipioBruto = a.municipio || a.município || "";
+  const municipio = municipioBruto ? canonicalMunicipalityName(municipioBruto) : "";
   const rotulo = a.rotulo || a.rótulo || a.versaoAnalise || a.versãoAnalise || a.label || "Nova análise";
   const dataAnalise = a.dataAnalise || a.data_análise || a.dataAnaliseBR || a.data || "";
   const documento = a.documento || a.documentoAnalisado || a.documento_analisado || "";
@@ -2225,7 +2226,7 @@ function normalizeAnalysisPayload(raw){
   };
 }
 function validateAnalysis(a){
-  if(!a.municipio || !REDEC.includes(a.municipio)) return "Município inválido ou não selecionado.";
+  if(!a.municipio || !RJ_MUNICIPIOS_OFICIAIS.includes(a.municipio)) return "Município inválido. Use o nome oficial de um dos 92 municípios do RJ.";
   if(!a.rotulo) return "Informe a versão/rótulo da análise.";
   if(!a.dataAnalise) return "Informe a data da análise.";
   for(const c of QUALITY_CRITERIA){
