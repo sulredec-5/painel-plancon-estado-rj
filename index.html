@@ -954,7 +954,29 @@ function buildDataForYear(ano){
       byName.set(m.nome, {ano, municipio:m.nome, redec:m.redec, risco:"—", versao:"—", atualizacao:"—", status:"bad", link:null, obs:"Sem documento registrado"});
     }
   });
+  byName.forEach((entry, nome)=>{
+    const latestAnalysis = latestQualityVersion(nome);
+    const latestUpload = latestUploadForMunicipio(nome);
+    if(latestAnalysis){
+      entry.status = "ok";
+      entry.versao = latestAnalysis.rotulo || entry.versao;
+      entry.atualizacao = latestAnalysis.dataAnalise || entry.atualizacao;
+      entry.link = latestAnalysis.linkDrive || entry.link;
+      entry.obs = "Analisado tecnicamente";
+    }else if(latestUpload){
+      entry.status = "warn";
+      entry.versao = latestUpload.label || entry.versao;
+      entry.atualizacao = latestUpload.documentDate || latestUpload.registeredAt || entry.atualizacao;
+      entry.link = (latestUpload.driveFiles && latestUpload.driveFiles[0] && latestUpload.driveFiles[0].url) || entry.link;
+      entry.obs = "Recebido — aguardando análise técnica";
+    }
+  });
   return Array.from(byName.values()).sort((a,b)=>String(a.municipio).localeCompare(String(b.municipio), "pt-BR"));
+}
+function latestUploadForMunicipio(nome){
+  const items = getUploadQueue().filter(u=>u.municipio === nome);
+  if(!items.length) return null;
+  return items.slice().sort((a,b)=>String(a.registeredAt||"").localeCompare(String(b.registeredAt||""))).pop();
 }
 
 /* ============================================================================
