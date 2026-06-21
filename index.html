@@ -157,6 +157,20 @@
     .quality-modal{margin:0;border-radius:0;min-height:100vh;}
   }
 
+  /* ── Overlay de contexto de acesso inválido (sem ?redec= / ?perfil=) ── */
+  .invalid-context-overlay{
+    position:fixed;inset:0;z-index:5000;background:var(--ink);
+    display:flex;align-items:center;justify-content:center;padding:24px;
+  }
+  .invalid-context-box{
+    background:var(--paper);border-radius:10px;max-width:520px;width:100%;
+    padding:32px 30px;box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .invalid-context-box h2{font-family:"Source Serif 4",serif;font-size:22px;margin:0 0 14px;color:var(--ink);}
+  .invalid-context-box p{font-size:14px;line-height:1.6;color:var(--muted);margin:0 0 12px;}
+  .invalid-context-hint{font-family:"IBM Plex Mono",monospace;font-size:12px;}
+  .invalid-context-hint code{background:#EEF2F8;padding:2px 6px;border-radius:4px;color:var(--ink);}
+
   /* ── Seção de qualidade (matriz + drill-down) ───────────────────────── */
 
   .quality-wrap{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:18px;}
@@ -344,12 +358,21 @@
 </head>
 <body>
 
+<div class="invalid-context-overlay" id="invalidContextOverlay" style="display:none;">
+  <div class="invalid-context-box">
+    <h2>Link de acesso não configurado</h2>
+    <p>Este painel deve ser aberto com um link específico para a sua REDEC ou perfil institucional.</p>
+    <p>Verifique o link que foi compartilhado com você, ou solicite o link correto ao Cap Leonardo Gonçalves - REDEC 5 Sul I.</p>
+    <p class="invalid-context-hint">Exemplos de formato esperado: <code>?redec=REDEC_5_SUL_I</code> ou <code>?perfil=DIRETORIA_GERAL</code></p>
+  </div>
+</div>
+
 <header class="top">
   <div class="top-inner">
     <div class="top-text">
       <p class="eyebrow">Defesa Civil RJ · Gestão de PLANCONs</p>
       <h1>Painel de Planos de Contingência</h1>
-      <p class="sub">Modelo limpo · cadastre municípios e REDECs na Área interna · fonte: pasta institucional de PLANCONs no Google Drive</p>
+      <p class="sub" id="headerSubtitle">Modelo estadual · fonte: pasta institucional de PLANCONs no Google Drive</p>
     </div>
     <div class="redec-brand" id="headerRedecBrand" title="Logomarca da REDEC configurável na Área interna">
       <img id="headerRedecLogo" alt="Logomarca da REDEC">
@@ -517,35 +540,40 @@
 
         <div class="upload-unlocked" id="uploadUnlocked">
           <div class="upload-note"><strong>Registro institucional:</strong> registre novas versões de PLANCON mantendo o arquivo original na pasta oficial <strong>pasta institucional de PLANCONs no Google Drive</strong> no Google Drive do trabalho. O painel salva os metadados na planilha-manifesto e classifica o envio como <strong>aguardando análise</strong> até a validação técnica.<span class="drive-config-badge">Manifesto institucional</span></div>
-          <h3 class="internal-section-title">Seleção da REDEC e municípios</h3>
-          <div class="upload-note"><strong>Modelo estadual:</strong> selecione a REDEC/Regional. O painel carrega automaticamente os municípios oficiais daquela REDEC, sem necessidade de cadastrá-los um a um.</div>
-          <div class="upload-form municipality-form">
-            <div class="upload-field">
-              <label for="municipalityRedecBulk">REDEC / Regional</label>
-              <select id="municipalityRedecBulk"></select>
-              <div class="upload-inline-hint">A lista segue a relação REDEC × município informada para os 92 municípios do RJ.</div>
+          <div id="municipalityBulkSection">
+            <h3 class="internal-section-title">Seleção da REDEC e municípios</h3>
+            <div class="upload-note"><strong>Modelo estadual:</strong> selecione a REDEC/Regional. O painel carrega automaticamente os municípios oficiais daquela REDEC, sem necessidade de cadastrá-los um a um.</div>
+            <div class="upload-form municipality-form">
+              <div class="upload-field">
+                <label for="municipalityRedecBulk">REDEC / Regional</label>
+                <select id="municipalityRedecBulk"></select>
+                <div class="upload-inline-hint">A lista segue a relação REDEC × município informada para os 92 municípios do RJ.</div>
+              </div>
+              <div class="upload-field">
+                <label>Municípios da REDEC selecionada</label>
+                <div class="upload-note" id="redecMunicipalityPreview" style="min-height:44px;margin:0;max-height:150px;overflow:auto;">Selecione uma REDEC para visualizar os municípios.</div>
+              </div>
             </div>
-            <div class="upload-field">
-              <label>Municípios da REDEC selecionada</label>
-              <div class="upload-note" id="redecMunicipalityPreview" style="min-height:44px;margin:0;max-height:150px;overflow:auto;">Selecione uma REDEC para visualizar os municípios.</div>
+            <div class="upload-actions">
+              <button class="upload-action-btn" id="municipalityLoadRedecBtn">Carregar municípios desta REDEC</button>
+              <button class="upload-action-btn secondary" id="municipalityExportBtn">Exportar municípios JSON</button>
+              <button class="upload-action-btn danger" id="municipalityClearBtn">Limpar cadastro local</button>
             </div>
           </div>
-          <div class="upload-actions">
-            <button class="upload-action-btn" id="municipalityLoadRedecBtn">Carregar municípios desta REDEC</button>
-            <button class="upload-action-btn secondary" id="municipalityExportBtn">Exportar municípios JSON</button>
-            <button class="upload-action-btn danger" id="municipalityClearBtn">Limpar cadastro local</button>
+          <div class="upload-note" id="municipalityAutoNote" style="display:none;">
+            <strong>Municípios carregados automaticamente.</strong> Esta instância do painel está vinculada a uma REDEC específica — os municípios oficiais dela já estão carregados abaixo, sem necessidade de seleção manual.
           </div>
 
           <details class="upload-note" style="margin-top:12px;">
             <summary><strong>Cadastro manual excepcional</strong></summary>
-            <div class="upload-inline-hint" style="margin:8px 0 10px;">Use somente se precisar cadastrar manualmente um município fora da relação oficial ou corrigir temporariamente uma regional.</div>
+            <div class="upload-inline-hint" style="margin:8px 0 10px;">Use somente se precisar cadastrar manualmente um município fora da relação oficial desta REDEC.</div>
             <div class="upload-form municipality-form">
               <div class="upload-field">
                 <label for="municipalityName">Município</label>
                 <input list="rjMunicipiosList" id="municipalityName" placeholder="Ex.: Barra Mansa">
                 <datalist id="rjMunicipiosList"></datalist>
               </div>
-              <div class="upload-field">
+              <div class="upload-field" id="municipalityRedecFreeTextField">
                 <label for="municipalityRedec">REDEC / Regional</label>
                 <input list="redecOptionsList" id="municipalityRedec" placeholder="Ex.: REDEC 5 - Sul I">
                 <datalist id="redecOptionsList"></datalist>
@@ -928,10 +956,95 @@ function redecForMunicipality(value){ return REDEC_BY_MUNICIPIO_KEY[normalizeKey
 
 const RJ_MUNICIPIOS_92 = RJ_MUNICIPIOS_OFICIAIS.slice().sort((a,b)=>a.localeCompare(b, "pt-BR"));
 
+/* ============================================================================
+   CONTEXTO DE ACESSO — REDEC travada pela URL ou perfil de visualização
+   ============================================================================
+   O painel agora é uma instância única (1 HTML) compartilhada por todas as
+   REDECs e pelos 2 perfis superiores. Quem acessa o painel define o contexto
+   por parâmetro de URL, nunca por um seletor manual dentro da página — isso
+   elimina o risco de alguém trocar de REDEC sem querer.
+
+   ?redec=REDEC_5_SUL_I                  -> instância travada nessa REDEC
+   ?perfil=DIRETORIA_GERAL                -> visão consolidada, somente leitura
+   ?perfil=SUPERINTENDENCIA_OPERACIONAL   -> visão consolidada, somente leitura
+   (nenhum parâmetro reconhecido)         -> tela de "link não configurado"
+   ============================================================================ */
+const REDEC_SLUGS = [
+  "REDEC_1_CAPITAL","REDEC_2_BAIXADA_FLUMINENSE","REDEC_3_METROPOLITANA",
+  "REDEC_4_COSTA_VERDE","REDEC_5_SUL_I","REDEC_6_SUL_II","REDEC_7_SERRANA_I",
+  "REDEC_8_SERRANA_II","REDEC_9_BAIXADA_LITORANEA","REDEC_10_NORTE","REDEC_11_NOROESTE"
+];
+const PERFIL_SLUGS = ["DIRETORIA_GERAL","SUPERINTENDENCIA_OPERACIONAL"];
+const PERFIL_LABELS = {
+  DIRETORIA_GERAL: "Diretoria Geral das REDECs",
+  SUPERINTENDENCIA_OPERACIONAL: "Superintendência Operacional"
+};
+
+// Mapa slug -> nome oficial da REDEC (na mesma grafia usada em REDEC_MUNICIPIO_PAIRS),
+// derivado automaticamente para não exigir manutenção dupla da lista.
+const REDEC_NOME_BY_SLUG = (function(){
+  const nomesOficiais = [...new Set(REDEC_MUNICIPIO_PAIRS.map(([r])=>r))];
+  const bySlug = {};
+  nomesOficiais.forEach(nome=>{
+    const slugDerivado = nome
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .toUpperCase().replace(/\s*-\s*/g,"_").replace(/\s+/g,"_");
+    bySlug[slugDerivado] = nome;
+  });
+  return bySlug;
+})();
+const REDEC_SLUG_BY_NOME = Object.fromEntries(Object.entries(REDEC_NOME_BY_SLUG).map(([slug,nome])=>[nome, slug]));
+
+function readUrlContext(){
+  const params = new URLSearchParams(window.location.search);
+  const redecParam = (params.get("redec") || "").trim().toUpperCase();
+  const perfilParam = (params.get("perfil") || "").trim().toUpperCase();
+
+  if(perfilParam && PERFIL_SLUGS.includes(perfilParam)){
+    return {mode:"perfil", perfilSlug:perfilParam, perfilLabel:PERFIL_LABELS[perfilParam], redecSlug:null, redecNome:null};
+  }
+  if(redecParam && REDEC_SLUGS.includes(redecParam)){
+    const nomeOficial = REDEC_NOME_BY_SLUG[redecParam] || "";
+    return {mode:"redec", redecSlug:redecParam, redecNome:displayRedecName(nomeOficial), perfilSlug:null, perfilLabel:null};
+  }
+  return {mode:"invalido", redecSlug:null, redecNome:null, perfilSlug:null, perfilLabel:null};
+}
+const URL_CONTEXT = readUrlContext();
+const IS_READONLY_PROFILE = URL_CONTEXT.mode === "perfil";
+const IS_REDEC_LOCKED = URL_CONTEXT.mode === "redec";
+
+function municipiosDaRedecAtiva(){
+  if(!IS_REDEC_LOCKED) return [];
+  return REDEC_MUNICIPIO_PAIRS
+    .filter(([r])=>displayRedecName(r) === URL_CONTEXT.redecNome)
+    .map(([,m])=>titleCaseMunicipio(m.replace(/\s*-\s*RJ\s*$/i,"")));
+}
 
 function getMunicipalityRegistry(){
-  try{return JSON.parse(localStorage.getItem(MUNICIPALITY_STORAGE_KEY) || "[]");}
-  catch(e){return [];}
+  let manual = [];
+  try{ manual = JSON.parse(localStorage.getItem(MUNICIPALITY_STORAGE_KEY) || "[]"); }
+  catch(e){ manual = []; }
+
+  if(IS_REDEC_LOCKED){
+    // Fonte de verdade: lista oficial REDEC × município. O cadastro manual
+    // (localStorage) só complementa casos excepcionais fora da relação oficial,
+    // filtrado para a REDEC ativa — nunca substitui a lista oficial.
+    const oficiais = municipiosDaRedecAtiva().map(nome=>({nome, redec: URL_CONTEXT.redecNome}));
+    const oficiaisKeys = new Set(oficiais.map(m=>normalizeKey(m.nome)));
+    const manualDaRedec = manual.filter(m=>m && m.redec === URL_CONTEXT.redecNome && !oficiaisKeys.has(normalizeKey(m.nome)));
+    return [...oficiais, ...manualDaRedec];
+  }
+
+  if(IS_READONLY_PROFILE){
+    // Perfis superiores: visão consolidada de todas as 11 REDECs.
+    return REDEC_MUNICIPIO_PAIRS.map(([r,m])=>({
+      nome: titleCaseMunicipio(m.replace(/\s*-\s*RJ\s*$/i,"")),
+      redec: displayRedecName(r)
+    }));
+  }
+
+  // Contexto inválido (sem ?redec= nem ?perfil= reconhecido): nenhum dado.
+  return [];
 }
 function setMunicipalityRegistry(items){
   localStorage.setItem(MUNICIPALITY_STORAGE_KEY, JSON.stringify(items || []));
@@ -1658,7 +1771,7 @@ const ANALYSIS_STORAGE_KEY = "redec5_plancon_analysis_history_v1";
    sempre tem prioridade sobre estes valores padrão.
    ============================================================================ */
 const DEFAULT_APPS_SCRIPT_CONFIG = {
-  url: "https://script.google.com/macros/s/AKfycbyRISFSr4tXjWkjmAO9vtN7YrLBVLVYc4ERiRUsE9qQoGkJOdJn_RBrd4pYP6Aj9L0/exec",
+  url: "https://script.google.com/macros/s/AKfycbxSsvHw2awvhzU9NDZMdS6MC-DC7XTqtG2-WNtdHgbTb21fw9W3kQ4BEJOtU2i_YH9T/exec",
   token: "2880ofBB0l5kJCCRQNP0oKl3dfLObeee"  // deve ser idêntico ao SHARED_TOKEN no .gs da planilha-manifesto
 };
 
@@ -1701,6 +1814,28 @@ function jsonpRequest(url){
     .catch(err=>{
       throw new Error(err && err.message ? err.message : "Não foi possível carregar a planilha-manifesto.");
     });
+}
+// Helper genérico de escrita autenticada no Apps Script. Toda ação de escrita
+// (upload, análise, cadastro de município, identidade visual, senha) passa
+// por aqui: o token de leitura geral + a senha da REDEC ativa (guardada só em
+// memória, nunca em localStorage) são anexados automaticamente ao payload.
+async function callAppsScriptWrite_(payload){
+  const cfg = getAppsScriptConfig();
+  if(!cfg.url) throw new Error("Nenhuma planilha-manifesto configurada. Não é possível registrar nada agora.");
+  const body = {
+    token: cfg.token,
+    redecSlug: (payload && payload.redecSlug) || (IS_REDEC_LOCKED ? URL_CONTEXT.redecSlug : ""),
+    senha: (payload && "senha" in payload) ? payload.senha : REDEC_SESSION.senha,
+    ...payload
+  };
+  const res = await fetch(cfg.url, {
+    method: "POST",
+    redirect: "follow",
+    headers: {"Content-Type":"text/plain;charset=utf-8"}, // evita preflight CORS no Apps Script
+    body: JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error(`Falha HTTP ${res.status} ao registrar na planilha-manifesto.`);
+  return res.json();
 }
 function mergeById(localItems, incomingItems){
   const map = new Map();
@@ -1791,6 +1926,11 @@ function getRedecOptionsForIdentity(){
   return [...new Set([...REDEC_OPTIONS_OFICIAIS, ...fromMunicipalities])].sort((a,b)=>a.localeCompare(b,"pt-BR"));
 }
 function currentHeaderRedec(){
+  // Em modo REDEC travada pela URL, a REDEC do cabeçalho é sempre a da URL —
+  // nenhuma configuração local pode sobrepor isso. Em perfis somente-leitura
+  // não há "REDEC ativa" única (visão consolidada).
+  if(IS_REDEC_LOCKED) return URL_CONTEXT.redecNome;
+  if(IS_READONLY_PROFILE) return "";
   const active = getActiveRedec();
   if(active) return active;
   const firstWithRedec = MUNICIPALITIES.find(m=>m.redec);
@@ -1985,7 +2125,11 @@ function addMunicipality(){
   const redecEl = document.getElementById("municipalityRedec");
   const rawNome = (nameEl?.value || "").trim();
   const nome = canonicalMunicipalityName(rawNome);
-  const redec = (redecEl?.value || "").trim() || redecForMunicipality(rawNome);
+  // Em modo REDEC travada, a REDEC é sempre a da URL (o campo livre fica oculto
+  // e não é considerado, mesmo que algum valor residual esteja nele).
+  const redec = IS_REDEC_LOCKED
+    ? URL_CONTEXT.redecNome
+    : ((redecEl?.value || "").trim() || redecForMunicipality(rawNome));
   if(!nome){ alert("Informe o nome do município."); return; }
   if(!redec){ alert("Informe a REDEC/Regional do município."); return; }
   const items = getMunicipalityRegistry();
@@ -2024,6 +2168,23 @@ function openInternalModal(){
   populateAnalysisMunicipios();
   renderAnalysisCriteriaFields();
   renderAnalysisQueue();
+
+  // Em modo REDEC travada pela URL, a seleção em massa de REDEC é desnecessária
+  // (os municípios já vêm carregados automaticamente) e o campo livre de REDEC
+  // no cadastro manual excepcional é travado no valor da REDEC ativa, para
+  // impedir que alguém cadastre um município numa REDEC diferente da sua.
+  const bulkSection = document.getElementById("municipalityBulkSection");
+  const autoNote = document.getElementById("municipalityAutoNote");
+  const redecFreeTextField = document.getElementById("municipalityRedecFreeTextField");
+  if(IS_REDEC_LOCKED){
+    if(bulkSection) bulkSection.style.display = "none";
+    if(autoNote) autoNote.style.display = "block";
+    if(redecFreeTextField) redecFreeTextField.style.display = "none";
+  }else{
+    if(bulkSection) bulkSection.style.display = "";
+    if(autoNote) autoNote.style.display = "none";
+    if(redecFreeTextField) redecFreeTextField.style.display = "";
+  }
 }
 function closeInternalModal(){
   document.getElementById("internalModalBackdrop").classList.remove("open");
@@ -2068,18 +2229,52 @@ function renderUploadQueue(){
     </tr>`;
   }).join("");
 }
+// A senha é validada de verdade no Apps Script (.gs), por REDEC — o hash
+// fixo no HTML era apenas cosmético e foi removido. A senha digitada fica só
+// em memória (REDEC_SESSION.senha), nunca em localStorage, e é reenviada a
+// cada ação de escrita para o backend revalidar.
+const REDEC_SESSION = { senha: null, autenticado: false };
+
 async function unlockUploadArea(){
   const pass = document.getElementById("uploadPassword").value || "";
   const error = document.getElementById("uploadError");
-  const digest = await sha256Hex(pass);
-  if(digest !== UPLOAD_PASSWORD_HASH){
+  const btn = document.getElementById("uploadLoginBtn");
+
+  if(!IS_REDEC_LOCKED){
+    error.textContent = "Esta instância do painel não está associada a uma REDEC. Verifique o link de acesso.";
     error.classList.add("show");
     return;
   }
-  error.classList.remove("show");
-  document.getElementById("uploadLocked").classList.remove("active");
-  document.getElementById("uploadUnlocked").classList.add("active");
-  renderUploadQueue();
+  if(!pass){
+    error.textContent = "Informe a senha da REDEC.";
+    error.classList.add("show");
+    return;
+  }
+
+  if(btn){ btn.disabled = true; btn.textContent = "Verificando..."; }
+  try{
+    const result = await callAppsScriptWrite_({
+      tipo: "senha_check",
+      redecSlug: URL_CONTEXT.redecSlug,
+      senha: pass
+    });
+    if(!result || !result.ok){
+      error.textContent = (result && result.error) || "Senha inválida.";
+      error.classList.add("show");
+      return;
+    }
+    REDEC_SESSION.senha = pass;
+    REDEC_SESSION.autenticado = true;
+    error.classList.remove("show");
+    document.getElementById("uploadLocked").classList.remove("active");
+    document.getElementById("uploadUnlocked").classList.add("active");
+    renderUploadQueue();
+  }catch(err){
+    error.textContent = "Não foi possível validar a senha agora. Verifique sua conexão e tente novamente.";
+    error.classList.add("show");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "Entrar"; }
+  }
 }
 function extractDriveFileId(url){
   if(!url) return "";
@@ -2102,19 +2297,19 @@ async function syncUploadToAppsScript(item){
   if(!cfg.url){
     return {sent:false, message:"não sincronizado: integração não configurada"};
   }
-  const payload = {
-    schema:"rj.plancon.upload_event.v1",
-    token: cfg.token || "",
-    painel:"PLANCON RJ - Modelo Estadual",
-    item
-  };
+  if(IS_REDEC_LOCKED && !REDEC_SESSION.autenticado){
+    return {sent:false, message:"não sincronizado: sessão da REDEC não autenticada"};
+  }
   try{
-    await fetch(cfg.url, {
-      method:"POST",
-      mode:"no-cors",
-      headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify(payload)
+    const result = await callAppsScriptWrite_({
+      tipo: "upload",
+      schema: "rj.plancon.upload_event.v1",
+      painel: "PLANCON RJ - Modelo Estadual",
+      item
     });
+    if(!result || !result.ok){
+      return {sent:false, message:"falha ao enviar para planilha: " + ((result && result.error) || "erro desconhecido")};
+    }
     return {sent:true, message:"enviado para planilha"};
   }catch(err){
     console.error(err);
@@ -2366,14 +2561,19 @@ function buildAnalysisFromForm(){
 async function syncAnalysisToAppsScript(analysis){
   const cfg = getAppsScriptConfig();
   if(!cfg.url) return {sent:false, message:"não sincronizado: integração não configurada"};
-  const payload = {
-    schema:"rj.plancon.analysis_event.v1",
-    token: cfg.token || "",
-    painel:"PLANCON RJ - Modelo Estadual",
-    analysis
-  };
+  if(IS_REDEC_LOCKED && !REDEC_SESSION.autenticado){
+    return {sent:false, message:"não sincronizado: sessão da REDEC não autenticada"};
+  }
   try{
-    await fetch(cfg.url, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(payload)});
+    const result = await callAppsScriptWrite_({
+      tipo: "analysis",
+      schema: "rj.plancon.analysis_event.v1",
+      painel: "PLANCON RJ - Modelo Estadual",
+      analysis
+    });
+    if(!result || !result.ok){
+      return {sent:false, message:"falha ao enviar análise para planilha: " + ((result && result.error) || "erro desconhecido")};
+    }
     return {sent:true, message:"análise enviada para planilha"};
   }catch(err){
     console.error(err);
@@ -2556,21 +2756,56 @@ document.addEventListener("keydown", (e)=>{
 
 
 /* ============================================================================
+   BOOTSTRAP DE CONTEXTO DE ACESSO
+   ============================================================================
+   Roda antes de qualquer renderização. Decide se o painel segue (REDEC
+   travada ou perfil somente-leitura) ou se bloqueia tudo com o overlay de
+   "link não configurado".
+   ============================================================================ */
+function applyAccessContext(){
+  if(URL_CONTEXT.mode === "invalido"){
+    document.getElementById("invalidContextOverlay").style.display = "flex";
+    document.querySelector("header.top").style.display = "none";
+    document.querySelector("main").style.display = "none";
+    document.querySelector("footer").style.display = "none";
+    return false;
+  }
+
+  const subtitle = document.getElementById("headerSubtitle");
+  const internalBtn = document.getElementById("internalOpenBtn");
+
+  if(IS_READONLY_PROFILE){
+    // Perfis superiores: consolidado de todas as REDECs, sem nenhuma via de escrita.
+    if(subtitle) subtitle.textContent = `Visão consolidada · ${URL_CONTEXT.perfilLabel} · somente leitura`;
+    if(internalBtn) internalBtn.remove(); // remove do DOM, não só esconde — evita reabertura via JS/teclado
+  } else if(IS_REDEC_LOCKED){
+    if(subtitle) subtitle.textContent = `${URL_CONTEXT.redecNome} · fonte: pasta institucional de PLANCONs no Google Drive`;
+  }
+  return true;
+}
+const ACCESS_OK = applyAccessContext();
+
+/* ============================================================================
    INIT
    ============================================================================ */
-loadStoredAnalysesToHistory();
-renderStats();
-initMap();
-initDonut();
-buildYearBtns();
-renderTable();
-
-renderCritList();
-renderQualityMeta();
-renderQualityMatrix();
-// Carregamento automático da planilha-manifesto, quando a integração estiver configurada.
-updateHeaderRedecLogo();
-syncManifestFromAppsScript(true);
+function safeInit_(label, fn){
+  try{ fn(); }
+  catch(err){ console.error(`Falha ao inicializar (${label}):`, err); }
+}
+if(ACCESS_OK){
+  safeInit_("loadStoredAnalysesToHistory", loadStoredAnalysesToHistory);
+  safeInit_("renderStats", renderStats);
+  safeInit_("initMap", initMap);
+  safeInit_("initDonut", initDonut);
+  safeInit_("buildYearBtns", buildYearBtns);
+  safeInit_("renderTable", renderTable);
+  safeInit_("renderCritList", renderCritList);
+  safeInit_("renderQualityMeta", renderQualityMeta);
+  safeInit_("renderQualityMatrix", renderQualityMatrix);
+  // Carregamento automático da planilha-manifesto, quando a integração estiver configurada.
+  safeInit_("updateHeaderRedecLogo", updateHeaderRedecLogo);
+  safeInit_("syncManifestFromAppsScript", ()=>syncManifestFromAppsScript(true));
+}
 </script>
 </body>
 </html>
