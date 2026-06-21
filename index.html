@@ -934,9 +934,13 @@ function normalizeKey(text){
 }
 function titleCaseMunicipio(text){
   const lowers = new Set(["DA","DE","DO","DAS","DOS","E"]);
-  return String(text || "").toLowerCase().split(/(\s+)/).map(part=>{
-    if(/^\s+$/.test(part)) return part;
-    const up = part.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  // Divide por espaços E por hífen (mantendo os separadores no resultado),
+  // para capitalizar corretamente nomes compostos com hífen como Varre-Sai
+  // (sem isso, o hífen fazia o nome inteiro virar "uma palavra só" e só a
+  // primeira letra geral ficava maiúscula: "Varre-sai" em vez de "Varre-Sai").
+  return String(text || "").toLowerCase().split(/(\s+|-)/).map(part=>{
+    if(/^\s+$/.test(part) || part === "-") return part;
+    const up = part.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
     if(lowers.has(up)) return part;
     return part.charAt(0).toUpperCase() + part.slice(1);
   }).join("");
@@ -2778,6 +2782,12 @@ function applyAccessContext(){
     // Perfis superiores: consolidado de todas as REDECs, sem nenhuma via de escrita.
     if(subtitle) subtitle.textContent = `Visão consolidada · ${URL_CONTEXT.perfilLabel} · somente leitura`;
     if(internalBtn) internalBtn.remove(); // remove do DOM, não só esconde — evita reabertura via JS/teclado
+    // O modal inteiro da Área Interna (incluindo configuração de logomarca,
+    // cadastro de municípios, etc.) também é removido do DOM — não basta
+    // remover só o botão que o abre, pois o conteúdo continuaria acessível
+    // por qualquer outro caminho (inspeção, foco por teclado, scripts).
+    const internalModal = document.getElementById("internalModalBackdrop");
+    if(internalModal) internalModal.remove();
   } else if(IS_REDEC_LOCKED){
     if(subtitle) subtitle.textContent = `${URL_CONTEXT.redecNome} · fonte: pasta institucional de PLANCONs no Google Drive`;
   }
