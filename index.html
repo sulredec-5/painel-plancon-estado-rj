@@ -82,6 +82,16 @@
   .popup-quality-btn{width:100%;background:var(--ink);color:#fff;border:none;border-radius:4px;padding:7px 10px;font-family:"IBM Plex Sans",sans-serif;font-size:12px;font-weight:600;cursor:pointer;}
   .popup-quality-btn:hover{background:#22365c;}
   .popup-obs{margin-top:7px;padding:6px 8px;background:#FBEEDF;border-left:3px solid #B5650A;color:#7A4200;font-size:11.5px;line-height:1.5;border-radius:0 3px 3px 0;}
+  tr.mun-group-row{cursor:pointer;}
+  tr.mun-group-row:hover{background:#FAFBFC;}
+  tr.mun-group-row td{font-weight:600;}
+  .mun-toggle{display:inline-block;width:14px;font-family:"IBM Plex Mono",monospace;color:var(--muted);transition:transform .15s;margin-right:4px;}
+  tr.mun-group-row.expanded .mun-toggle{transform:rotate(90deg);}
+  .mun-summary-count{font-weight:400;color:var(--muted);font-size:12.5px;}
+  tr.mun-detail-row{display:none;background:#FAFBFC;}
+  tr.mun-detail-row.visible{display:table-row;}
+  tr.mun-detail-row td{padding-left:34px;font-size:13px;}
+  tr.mun-detail-row td.municipio-cell{font-weight:400;color:var(--muted);}
 
   .map-legend{background:white;border:1px solid var(--line);border-radius:5px;padding:10px 13px;font-family:"IBM Plex Sans",sans-serif;font-size:12px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.08);}
   .map-legend-title{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B82;margin-bottom:8px;font-weight:600;}
@@ -1191,11 +1201,12 @@ function buildDataForYear(ano){
       entry.versao = latestAnalysis.rotulo || entry.versao;
       entry.atualizacao = latestAnalysis.dataAnalise || entry.atualizacao;
       entry.link = latestAnalysis.linkDrive || linkFromUpload || entry.link;
-      entry.obs = "Analisado tecnicamente";
+      // obs automática: só aparece se não houver observação manual no OBS_REGISTRY
+      entry._obsAuto = "Analisado tecnicamente";
       if(refDate){
         const days = daysSince(refDate);
         if(days !== null && days > 365){
-          entry.obs = `Analisado tecnicamente — documento de ${toBRDate(refDate)}, há mais de 1 ano da confecção`;
+          entry._obsAuto = `Analisado tecnicamente — documento de ${toBRDate(refDate)}, há mais de 1 ano da confecção`;
         }
       }
     }else if(latestUpload){
@@ -1203,10 +1214,26 @@ function buildDataForYear(ano){
       entry.versao = latestUpload.label || entry.versao;
       entry.atualizacao = latestUpload.documentDate || latestUpload.registeredAt || entry.atualizacao;
       entry.link = linkFromUpload || entry.link;
-      entry.obs = "Recebido — aguardando análise técnica";
+      entry._obsAuto = "Recebido — aguardando análise técnica";
     }
   });
-  return Array.from(byName.values()).sort((a,b)=>String(a.municipio).localeCompare(String(b.municipio), "pt-BR"));
+
+  // Aplica obs manuais do OBS_REGISTRY por cima; fallback para _obsAuto
+  // Guard: na primeira chamada (inicialização da página) OBS_REGISTRY ainda não foi declarado
+  const _obsReg = (typeof OBS_REGISTRY !== "undefined") ? OBS_REGISTRY : {};
+  const rows = Array.from(byName.values());
+  rows.forEach(entry => {
+    const obsId = makeObsId(entry.municipio, ano);
+    const manual = _obsReg[obsId];
+    if(manual && manual.observacao){
+      entry.obs = manual.observacao;   // obs manual tem prioridade
+    } else if(entry._obsAuto){
+      entry.obs = entry._obsAuto;      // fallback automático
+    }
+    delete entry._obsAuto;
+  });
+
+  return rows.sort((a,b)=>String(a.municipio).localeCompare(String(b.municipio), "pt-BR"));
 }
 function latestUploadForMunicipio(nome){
   const items = getUploadQueue().filter(u=>u.municipio === nome);
@@ -1324,9 +1351,13 @@ function initMap(){
         ? info.riscos.map(r=>`<div>· ${r}</div>`).join("")
         : "<div style='color:#999'>Sem riscos cadastrados</div>";
       const st = info ? info.status : "bad";
-      const obsSet = new Set(DATA.filter(d=>d.municipio===nome && d.obs).map(d=>d.obs));
-      const obsHtml = obsSet.size
-        ? `<div class="popup-obs">${[...obsSet].map(o=>`⚠ ${o}`).join("<br>")}</div>`
+      // Obs do município: prioridade para obs manual (OBS_REGISTRY); fallback para automática
+      const obsId = makeObsId(nome, anoAtivo);
+      const obsManual = OBS_REGISTRY[obsId] && OBS_REGISTRY[obsId].observacao;
+      const obsAuto = DATA.find(d=>d.municipio===nome && d.obs)?.obs || "";
+      const obsTexto = obsManual || obsAuto;
+      const obsHtml = obsTexto
+        ? `<div class="popup-obs">⚠ ${obsTexto}</div>`
         : "";
       layer.bindPopup(`
         <div class="popup-nome">${nome}</div>
@@ -1497,16 +1528,65 @@ function renderTable(){
   });
   const body=document.getElementById("tableBody");
   if(!rows.length){body.innerHTML=`<tr class="empty-row"><td colspan="6">Nenhum resultado para esse filtro/busca.</td></tr>`;return;}
-  body.innerHTML=rows.map(d=>`
-    <tr>
-      <td class="municipio-cell">${d.municipio}${d.obs ? `<div style="font-size:11px;color:#B5650A;font-weight:400;margin-top:3px;">⚠ ${d.obs}</div>` : ""}</td>
-      <td class="dim"><span class="cell-label">Risco / plano </span>${d.risco}</td>
-      <td class="mono"><span class="cell-label">Versão </span>${d.versao}</td>
-      <td class="mono dim"><span class="cell-label">Última atualização </span>${d.atualizacao}</td>
-      <td><span class="cell-label">Status </span><span class="stamp ${d.status}">${STATUS_LABEL[d.status]}</span></td>
-      <td class="linkpdf"><span class="cell-label">PDF </span>${d.link?`<a href="${d.link}" target="_blank" rel="noopener">Abrir ↗</a>`:'<span class="dim">—</span>'}</td>
-    </tr>
-  `).join("");
+
+  // Agrupa por município — preserva ordem do sort, usa worst-status para o resumo
+  const groups=[], groupIndex={};
+  rows.forEach(d=>{
+    if(!(d.municipio in groupIndex)){
+      groupIndex[d.municipio]=groups.length;
+      groups.push({municipio:d.municipio, obs:d.obs, items:[]});
+    }
+    groups[groupIndex[d.municipio]].items.push(d);
+    // obs: usa a obs manual se existir (já vem priorizada do buildDataForYear)
+    if(d.obs && !groups[groupIndex[d.municipio]].obs)
+      groups[groupIndex[d.municipio]].obs=d.obs;
+  });
+
+  const rank={bad:0,warn:1,ok:2};
+  body.innerHTML=groups.map((g,gi)=>{
+    const summaryStatus=g.items.reduce((worst,d)=>rank[d.status]<rank[worst]?d.status:worst,"ok");
+    const groupId="mungrp-"+gi;
+    const single=g.items.length===1;
+    const obsHtml=g.obs?`<div style="font-size:11px;color:#B5650A;font-weight:400;margin-top:3px;margin-left:${single?0:20}px;">⚠ ${g.obs}</div>`:"";
+
+    const summaryRow=`
+      <tr class="mun-group-row" data-group="${groupId}" tabindex="0" role="button" aria-expanded="false">
+        <td class="municipio-cell"><span class="mun-toggle">${single?"":"▸"}</span>${g.municipio}${obsHtml}</td>
+        <td class="dim"><span class="cell-label">Risco / plano </span>${single?g.items[0].risco:`<span class="mun-summary-count">${g.items.length} plano${g.items.length>1?"s":""} cadastrado${g.items.length>1?"s":""}</span>`}</td>
+        <td class="mono"><span class="cell-label">Versão </span>${single?g.items[0].versao:"—"}</td>
+        <td class="mono dim"><span class="cell-label">Última atualização </span>${single?g.items[0].atualizacao:"—"}</td>
+        <td><span class="cell-label">Status </span><span class="stamp ${summaryStatus}">${STATUS_LABEL[summaryStatus]}</span></td>
+        <td class="linkpdf"><span class="cell-label">PDF </span>${single&&g.items[0].link?`<a href="${g.items[0].link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Abrir ↗</a>`:'<span class="dim">—</span>'}</td>
+      </tr>`;
+
+    if(single) return summaryRow;
+
+    const detailRows=g.items.map(d=>`
+      <tr class="mun-detail-row" data-group="${groupId}">
+        <td class="municipio-cell"></td>
+        <td class="dim"><span class="cell-label">Risco / plano </span>${d.risco}</td>
+        <td class="mono"><span class="cell-label">Versão </span>${d.versao}</td>
+        <td class="mono dim"><span class="cell-label">Última atualização </span>${d.atualizacao}</td>
+        <td><span class="cell-label">Status </span><span class="stamp ${d.status}">${STATUS_LABEL[d.status]}</span></td>
+        <td class="linkpdf"><span class="cell-label">PDF </span>${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Abrir ↗</a>`:'<span class="dim">—</span>'}</td>
+      </tr>`).join("");
+
+    return summaryRow+detailRows;
+  }).join("");
+
+  // Liga o toggle de expansão nos grupos com múltiplos planos
+  body.querySelectorAll("tr.mun-group-row").forEach(tr=>{
+    const groupId=tr.dataset.group;
+    const detailRows=body.querySelectorAll(`tr.mun-detail-row[data-group="${groupId}"]`);
+    if(!detailRows.length) return;
+    const toggle=()=>{
+      const expanded=tr.classList.toggle("expanded");
+      tr.setAttribute("aria-expanded",expanded?"true":"false");
+      detailRows.forEach(r=>r.classList.toggle("visible",expanded));
+    };
+    tr.addEventListener("click",toggle);
+    tr.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}});
+  });
 }
 
 document.getElementById("searchInput").addEventListener("input",e=>{searchTerm=e.target.value.trim().toLowerCase();renderTable();});
@@ -2053,7 +2133,7 @@ function loadMunicipiosFromManifest(municipios){
     const nome = titleCaseMunicipio((m.municipio || "").trim());
     if(!nome) return;
     if(!existingKeys.has(normalizeKey(nome))){
-      local.push({nome, redec: m.redecNome || URL_CONTEXT.redecNome || "", registeredAt: m.timestamp || new Date().toISOString(), source:"planilha_manifesto"});
+      local.push({nome, redec: m.redecNome || URL_CONTEXT.redecNome || "", registeredAt: new Date().toISOString(), source:"planilha_manifesto"});
       existingKeys.add(normalizeKey(nome));
       added++;
     }
@@ -2077,7 +2157,7 @@ function loadIdentidadeFromManifest(identidade){
     // Não sobrescreve logo local feita por file upload com a da planilha
     const existing = registry[redec];
     if(existing && existing.source === "upload") return;
-    registry[redec] = {src: url, source: "url", updatedAt: id.timestamp || new Date().toISOString()};
+    registry[redec] = {src: url, source: "url", updatedAt: new Date().toISOString()};
   });
   setRedecLogoRegistry(registry);
   updateHeaderRedecLogo();
@@ -3192,9 +3272,21 @@ function applyObsToData(obs){
   // na tabela e no mapa sem precisar recarregar da planilha.
   if(!obs || !obs.municipio || !obs.ano) return;
   DATA.forEach(row => {
+    // Comparação segura: ambos convertidos para string (ano pode ser number ou string)
     if(row.municipio === obs.municipio && String(row.ano) === String(obs.ano)){
-      if(obs.observacao) row.obs = obs.observacao;
-      else delete row.obs;
+      if(obs.observacao){
+        row.obs = obs.observacao;
+      } else {
+        // Sem obs manual: restaura o fallback automático (_obsAuto já foi limpo,
+        // então recalcula a partir do status da entrada)
+        if(row.status === "ok"){
+          row.obs = "Analisado tecnicamente";
+        } else if(row.status === "warn"){
+          row.obs = "Recebido — aguardando análise técnica";
+        } else {
+          delete row.obs;
+        }
+      }
     }
   });
 }
