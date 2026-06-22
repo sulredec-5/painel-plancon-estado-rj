@@ -1379,7 +1379,18 @@ function initMap(){
         e.target.setStyle(isRedec ? {fillOpacity:1, weight:2.5, color:"#16243F"} : {fillOpacity:0.75, weight:1.2, color:"#8896AA"});
         e.target.bringToFront();
       },
-      mouseout(e){ geojsonLayer.resetStyle(e.target); },
+      mouseout(e){
+        // resetStyle voltaria ao estilo inicial (antes de updateMapColors), causando cor errada.
+        // Em vez disso, reaplicamos o estilo correto baseado no status atual do município.
+        if(isRedec){
+          const summary = getMunicipioSummary();
+          const info = summary[nome];
+          const st = info ? info.status : "bad";
+          e.target.setStyle({fillColor:STATUS_FILL[st], fillOpacity:0.82, color:"#fff", weight:1.5, opacity:1});
+        } else {
+          e.target.setStyle({fillColor:"#D4DAE3", fillOpacity:0.55, color:"#B0B8C4", weight:0.8, opacity:1});
+        }
+      },
       click(e){
         if(isRedec) map.fitBounds(e.target.getBounds(),{padding:[40,40]});
         e.target.openPopup();
