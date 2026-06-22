@@ -1305,6 +1305,7 @@ function evolutionLabel(delta){
 const CURRENT_YEAR = new Date().getFullYear();
 const ANOS = [CURRENT_YEAR, CURRENT_YEAR-1];
 let anoAtivo = CURRENT_YEAR;
+let OBS_REGISTRY = {}; // chave: obsId → objeto observação
 let DATA = buildDataForYear(anoAtivo);
 
 function getMunicipioSummary(){
@@ -1353,7 +1354,8 @@ function initMap(){
       const st = info ? info.status : "bad";
       // Obs do município: prioridade para obs manual (OBS_REGISTRY); fallback para automática
       const obsId = makeObsId(nome, anoAtivo);
-      const obsManual = OBS_REGISTRY[obsId] && OBS_REGISTRY[obsId].observacao;
+      const _obsRegPopup = (typeof OBS_REGISTRY !== "undefined") ? OBS_REGISTRY : {};
+      const obsManual = _obsRegPopup[obsId] && _obsRegPopup[obsId].observacao;
       const obsAuto = DATA.find(d=>d.municipio===nome && d.obs)?.obs || "";
       const obsTexto = obsManual || obsAuto;
       const obsHtml = obsTexto
@@ -3258,7 +3260,7 @@ document.getElementById("deliveryClearBtn")?.addEventListener("click", ()=>limpa
    ============================================================================ */
 // Armazena as observações em memória durante a sessão.
 // Na inicialização, são carregadas da planilha via syncManifestFromAppsScript.
-let OBS_REGISTRY = {}; // chave: obsId → objeto observação
+// OBS_REGISTRY movido para antes de buildDataForYear — ver declaração perto de DATA
 
 function makeObsId(municipio, ano){
   return [URL_CONTEXT.redecSlug || "geral", municipio, String(ano)]
