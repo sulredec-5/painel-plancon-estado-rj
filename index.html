@@ -812,6 +812,28 @@ Formato obrigatório:
               <tbody id="analysisQueueBody"></tbody>
             </table>
           </div>
+
+          <h3 class="internal-section-title">Segurança — Trocar senha da Área interna</h3>
+          <div class="upload-note">A senha protege o acesso de escrita exclusivamente desta REDEC. A nova senha deve ter no mínimo 8 caracteres. Guarde em local seguro — o Cap Leonardo Gonçalves (REDEC 5 Sul I) precisará ser acionado caso a senha seja esquecida.</div>
+          <div class="upload-form" id="changePasswordForm">
+            <div class="upload-field">
+              <label for="cpSenhaAtual">Senha atual</label>
+              <input type="password" id="cpSenhaAtual" placeholder="Senha atual da Área interna" autocomplete="current-password">
+            </div>
+            <div class="upload-field">
+              <label for="cpNovaSenha">Nova senha</label>
+              <input type="password" id="cpNovaSenha" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+            </div>
+            <div class="upload-field">
+              <label for="cpConfirmaSenha">Confirmar nova senha</label>
+              <input type="password" id="cpConfirmaSenha" placeholder="Repita a nova senha" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="upload-actions">
+            <button class="upload-action-btn" id="changePasswordBtn">Alterar senha</button>
+          </div>
+          <div class="upload-inline-hint" id="changePasswordStatus" style="margin-top:8px;"></div>
+
         </div>
       </div>
     </div>
@@ -2758,6 +2780,58 @@ document.addEventListener("keydown", (e)=>{
   }
 });
 
+
+/* ============================================================================
+   TROCA DE SENHA DA ÁREA INTERNA (por REDEC)
+   ============================================================================ */
+async function changePassword(){
+  if(!IS_REDEC_LOCKED){
+    alert("Função disponível apenas em instâncias vinculadas a uma REDEC específica.");
+    return;
+  }
+  const senhaAtual = document.getElementById("cpSenhaAtual")?.value || "";
+  const novaSenha  = document.getElementById("cpNovaSenha")?.value || "";
+  const confirma   = document.getElementById("cpConfirmaSenha")?.value || "";
+  const statusEl   = document.getElementById("changePasswordStatus");
+  const btn        = document.getElementById("changePasswordBtn");
+
+  if(statusEl) statusEl.textContent = "";
+
+  if(!senhaAtual){ if(statusEl) statusEl.textContent = "Informe a senha atual."; return; }
+  if(novaSenha.length < 8){ if(statusEl) statusEl.textContent = "A nova senha deve ter pelo menos 8 caracteres."; return; }
+  if(novaSenha !== confirma){ if(statusEl) statusEl.textContent = "A nova senha e a confirmação não coincidem."; return; }
+  if(novaSenha === senhaAtual){ if(statusEl) statusEl.textContent = "A nova senha deve ser diferente da senha atual."; return; }
+
+  if(btn){ btn.disabled = true; btn.textContent = "Alterando…"; }
+  try{
+    const result = await callAppsScriptWrite_({
+      tipo: "senha_set",
+      redecSlug: URL_CONTEXT.redecSlug,
+      senha: senhaAtual,      // token de autenticação (senha atual, enviada como campo genérico)
+      senhaAtual: senhaAtual,
+      novaSenha: novaSenha,
+      atualizadoPor: "painel_web"
+    });
+    if(!result || !result.ok){
+      if(statusEl) statusEl.textContent = "Erro: " + ((result && result.error) || "não foi possível alterar a senha. Verifique a senha atual.");
+    } else {
+      // Atualiza a sessão em memória com a nova senha, para que chamadas
+      // subsequentes de escrita (upload, análise) continuem funcionando
+      // sem precisar fazer login novamente.
+      REDEC_SESSION.senha = novaSenha;
+      if(statusEl) statusEl.textContent = "✓ Senha alterada com sucesso. Guarde a nova senha em local seguro.";
+      document.getElementById("cpSenhaAtual").value = "";
+      document.getElementById("cpNovaSenha").value = "";
+      document.getElementById("cpConfirmaSenha").value = "";
+    }
+  }catch(err){
+    if(statusEl) statusEl.textContent = "Erro de conexão. Verifique sua internet e tente novamente.";
+    console.error(err);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "Alterar senha"; }
+  }
+}
+document.getElementById("changePasswordBtn")?.addEventListener("click", changePassword);
 
 /* ============================================================================
    BOOTSTRAP DE CONTEXTO DE ACESSO
