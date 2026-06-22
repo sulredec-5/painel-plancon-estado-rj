@@ -3268,11 +3268,12 @@ function applyAccessContext(){
 
     // Remove do DOM todos os elementos que não fazem sentido na visão consolidada:
     // - Bloco de logomarca (é por REDEC, não existe "logo do consolidado")
-    // - Botão "Ver análise" com o contador (as análises são por REDEC)
     // - Botão "Comparar versões" (comparação é por REDEC/município específico)
     // - Botão "Área interna" (nenhuma via de escrita)
     // - Modal inteiro da Área Interna
-    ["headerRedecBrand","qualityOpenBtn","compareOpenBtn","internalOpenBtn","internalModalBackdrop"]
+    // O botão "Ver análise" é mantido: perfis superiores precisam de acesso
+    // direto à matriz de qualidade dos 92 municípios.
+    ["headerRedecBrand","compareOpenBtn","internalOpenBtn","internalModalBackdrop"]
       .forEach(id => { const el = document.getElementById(id); if(el) el.remove(); });
 
   } else if(IS_REDEC_LOCKED){
