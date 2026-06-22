@@ -591,6 +591,39 @@
               <tbody id="deliveryQueueBody"></tbody>
             </table>
           </div>
+
+          <h3 class="internal-section-title">Observações de entrega</h3>
+          <div class="upload-note"><strong>Aviso operacional curto:</strong> registre informações rápidas sobre a situação de entrega de um município (ex.: <em>&ldquo;Nova versão em confecção após reunião IntegraCON&rdquo;</em> ou <em>&ldquo;Aguardando assinatura do Prefeito&rdquo;</em>). O aviso aparece na tabela e no mapa junto ao status do município. Cada município/ano tem <strong>uma observação ativa</strong> — salvar substitui a anterior; limpar campo remove o aviso.</div>
+          <div class="upload-form">
+            <div class="upload-field">
+              <label for="obsMunicipio">Município</label>
+              <select id="obsMunicipio"></select>
+            </div>
+            <div class="upload-field">
+              <label for="obsAno">Ano de referência</label>
+              <select id="obsAno"></select>
+            </div>
+            <div class="upload-field full">
+              <label for="obsText">Observação (máx. 200 caracteres)</label>
+              <textarea id="obsText" placeholder="Ex.: Nova versão em confecção conforme reunião presencial IntegraCON." maxlength="200" rows="2" style="resize:vertical;"></textarea>
+            </div>
+            <div class="upload-field">
+              <label for="obsResponsavel">Responsável pelo registro</label>
+              <input type="text" id="obsResponsavel" placeholder="Nome ou matrícula">
+            </div>
+          </div>
+          <div class="upload-actions">
+            <button class="upload-action-btn" id="obsRegisterBtn">Salvar observação</button>
+            <button class="upload-action-btn secondary" id="obsClearBtn">Limpar campo (remover aviso)</button>
+          </div>
+          <div class="upload-inline-hint" id="obsStatus" style="margin-top:8px;"></div>
+          <div class="upload-table-wrap" style="margin-top:14px;">
+            <table class="upload-table">
+              <thead><tr><th>Município</th><th>Ano</th><th>Observação</th><th>Responsável</th><th>Atualizado em</th></tr></thead>
+              <tbody id="obsQueueBody"></tbody>
+            </table>
+          </div>
+
           <div id="municipalityBulkSection">
             <h3 class="internal-section-title">Seleção da REDEC e municípios</h3>
             <div class="upload-note"><strong>Modelo estadual:</strong> selecione a REDEC/Regional. O painel carrega automaticamente os municípios oficiais daquela REDEC, sem necessidade de cadastrá-los um a um.</div>
@@ -861,38 +894,6 @@ Formato obrigatório:
             <table class="analysis-table">
               <thead><tr><th>Data da análise</th><th>Município</th><th>Versão</th><th>Documento</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody id="analysisQueueBody"></tbody>
-            </table>
-          </div>
-
-          <h3 class="internal-section-title">Observações de entrega</h3>
-          <div class="upload-note"><strong>Aviso operacional curto:</strong> registre informações rápidas sobre a situação de entrega de um município (ex.: <em>"Nova versão em confecção após reunião IntegraCON"</em> ou <em>"Aguardando assinatura do Prefeito"</em>). O aviso aparece na tabela e no mapa junto ao status do município. Cada município/ano tem <strong>uma observação ativa</strong> — salvar substitui a anterior; limpar campo remove o aviso.</div>
-          <div class="upload-form">
-            <div class="upload-field">
-              <label for="obsMunicipio">Município</label>
-              <select id="obsMunicipio"></select>
-            </div>
-            <div class="upload-field">
-              <label for="obsAno">Ano de referência</label>
-              <select id="obsAno"></select>
-            </div>
-            <div class="upload-field full">
-              <label for="obsText">Observação (máx. 200 caracteres)</label>
-              <textarea id="obsText" placeholder="Ex.: Nova versão em confecção conforme reunião presencial IntegraCON." maxlength="200" rows="2" style="resize:vertical;"></textarea>
-            </div>
-            <div class="upload-field">
-              <label for="obsResponsavel">Responsável pelo registro</label>
-              <input type="text" id="obsResponsavel" placeholder="Nome ou matrícula">
-            </div>
-          </div>
-          <div class="upload-actions">
-            <button class="upload-action-btn" id="obsRegisterBtn">Salvar observação</button>
-            <button class="upload-action-btn secondary" id="obsClearBtn">Limpar campo (remover aviso)</button>
-          </div>
-          <div class="upload-inline-hint" id="obsStatus" style="margin-top:8px;"></div>
-          <div class="upload-table-wrap" style="margin-top:14px;">
-            <table class="upload-table">
-              <thead><tr><th>Município</th><th>Ano</th><th>Observação</th><th>Responsável</th><th>Atualizado em</th></tr></thead>
-              <tbody id="obsQueueBody"></tbody>
             </table>
           </div>
 
@@ -1976,10 +1977,14 @@ async function syncManifestFromAppsScript(silent=false){
     setStoredAnalyses(merged);
     loadObsFromManifest(data.observacoes || []);
     loadEntregasFromManifest(data.entregas || []);
+    loadMunicipiosFromManifest(data.municipios || []);
+    loadIdentidadeFromManifest(data.identidade || []);
+    mergeUploadsFromManifest(data.uploads || []);
     refreshAfterManifestLoad();
     const obsCount = (data.observacoes || []).length;
     const entregasCount = (data.entregas || []).length;
-    const msg = `Sincronização concluída: ${incoming.length} análise(s), ${obsCount} observação(ões) e ${entregasCount} entrega(s) carregada(s) da planilha-manifesto.`;
+    const muniCount = (data.municipios || []).length;
+    const msg = `Sincronização concluída: ${incoming.length} análise(s), ${obsCount} observação(ões), ${entregasCount} entrega(s) e ${muniCount} município(s) carregado(s) da planilha-manifesto.`;
     setSyncStatus(msg);
     if(!silent) alert(msg);
   }catch(err){
@@ -2017,6 +2022,91 @@ async function sha256Hex(text){
   const data = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+/* ============================================================================
+   ETAPA 2 — Funções de sincronização de municípios, identidade e uploads
+   com a planilha-manifesto (substitui localStorage como fonte de verdade)
+   ============================================================================ */
+
+// Carrega municípios vindos do export da planilha.
+// Em modo REDEC travada: filtra pela REDEC da URL e faz merge com os oficiais.
+// Em perfil superior: ignora (já usa REDEC_MUNICIPIO_PAIRS diretamente).
+function loadMunicipiosFromManifest(municipios){
+  if(!Array.isArray(municipios) || !municipios.length) return;
+  if(IS_READONLY_PROFILE) return; // perfis superiores usam a lista hardcoded
+
+  // Filtra os registros relevantes para esta REDEC (slug da URL)
+  const daPlanilha = IS_REDEC_LOCKED
+    ? municipios.filter(m => m.redecSlug === URL_CONTEXT.redecSlug)
+    : municipios;
+
+  if(!daPlanilha.length) return;
+
+  // Obtém o registry atual (local)
+  const local = getMunicipalityRegistry();
+  const existingKeys = new Set(local.map(m => normalizeKey(m.nome)));
+
+  // Adiciona apenas os que ainda não estão no registry local
+  let added = 0;
+  daPlanilha.forEach(m => {
+    const nome = titleCaseMunicipio((m.municipio || "").trim());
+    if(!nome) return;
+    if(!existingKeys.has(normalizeKey(nome))){
+      local.push({nome, redec: m.redecNome || URL_CONTEXT.redecNome || "", registeredAt: m.timestamp || new Date().toISOString(), source:"planilha_manifesto"});
+      existingKeys.add(normalizeKey(nome));
+      added++;
+    }
+  });
+
+  if(added > 0){
+    setMunicipalityRegistry(local);
+    refreshMunicipalityGlobals();
+  }
+}
+
+// Carrega identidade visual da planilha e atualiza o registry em memória/localStorage.
+// Só sincroniza logos que vieram de URL (não base64 de upload local).
+function loadIdentidadeFromManifest(identidade){
+  if(!Array.isArray(identidade) || !identidade.length) return;
+  const registry = getRedecLogoRegistry();
+  identidade.forEach(id => {
+    const redec = id.redecNome || "";
+    const url = (id.logoUrl || "").trim();
+    if(!redec || !url) return;
+    // Não sobrescreve logo local feita por file upload com a da planilha
+    const existing = registry[redec];
+    if(existing && existing.source === "upload") return;
+    registry[redec] = {src: url, source: "url", updatedAt: id.timestamp || new Date().toISOString()};
+  });
+  setRedecLogoRegistry(registry);
+  updateHeaderRedecLogo();
+}
+
+// Faz merge dos uploads vindos da planilha com a fila local.
+// Garante que registros de outros navegadores/colegas apareçam na fila.
+function mergeUploadsFromManifest(uploadsFromSheet){
+  if(!Array.isArray(uploadsFromSheet) || !uploadsFromSheet.length) return;
+  // Filtra pela REDEC ativa
+  const filtrados = IS_REDEC_LOCKED
+    ? uploadsFromSheet.filter(u => u.redecSlug === URL_CONTEXT.redecSlug)
+    : uploadsFromSheet;
+  if(!filtrados.length) return;
+
+  const local = getUploadQueue();
+  const localIds = new Set(local.map(u => u.id).filter(Boolean));
+  let adicionados = 0;
+  filtrados.forEach(u => {
+    if(u.id && !localIds.has(u.id)){
+      local.push({...u, syncStatus:"carregado da planilha"});
+      localIds.add(u.id);
+      adicionados++;
+    }
+  });
+  if(adicionados > 0){
+    setUploadQueue(local);
+    renderUploadQueue();
+  }
 }
 
 
@@ -2126,7 +2216,23 @@ async function saveRedecLogo(){
   setActiveRedec(redec);
   if(fileInput) fileInput.value = "";
   renderRedecLogoSettings();
-  alert("Identidade visual da REDEC salva e aplicada ao cabeçalho.");
+  // Etapa 2: persiste na planilha se for URL pública (base64 de upload local fica só local)
+  if(source === "url" && IS_REDEC_LOCKED && REDEC_SESSION.autenticado){
+    callAppsScriptWrite_({
+      tipo:"identidade",
+      redecNome: redec,
+      logoUrl: src,
+      logoNomeArquivo: "",
+      atualizadoPor: ""
+    }).catch(()=>{});
+    alert("Identidade visual da REDEC salva e sincronizada com a planilha-manifesto.");
+  } else {
+    if(source === "upload"){
+      alert("Identidade visual da REDEC salva localmente.\n\nLogomarcas carregadas por arquivo ficam apenas neste navegador. Para sincronizar entre equipes, use um link de URL pública.");
+    } else {
+      alert("Identidade visual da REDEC salva e aplicada ao cabeçalho.");
+    }
+  }
 }
 function setSelectedRedecAsActive(){
   const redec = document.getElementById("redecLogoSelect")?.value || "";
@@ -2195,6 +2301,13 @@ function loadSelectedRedecMunicipalities(){
   DATA = buildDataForYear(anoAtivo);
   renderMunicipalityRegistry();
   renderStats(); renderTable(); updateMapColors(); initDonut();
+  // Etapa 2: persiste cada município novo na planilha (fire-and-forget)
+  if(added > 0 && IS_REDEC_LOCKED && REDEC_SESSION.autenticado){
+    municipios.forEach(nome => {
+      callAppsScriptWrite_({tipo:"municipio_add", municipio:nome, redecNome:redec})
+        .catch(()=>{});
+    });
+  }
   alert(added ? `${added} município(s) da ${redec} foram cadastrados.` : `Todos os municípios da ${redec} já estavam cadastrados.`);
 }
 
@@ -2256,6 +2369,11 @@ function addMunicipality(){
   DATA = buildDataForYear(anoAtivo);
   renderMunicipalityRegistry();
   renderStats(); renderTable(); updateMapColors(); initDonut();
+  // Etapa 2: persiste na planilha (fire-and-forget; falha silenciosa)
+  if(IS_REDEC_LOCKED && REDEC_SESSION.autenticado){
+    callAppsScriptWrite_({tipo:"municipio_add", municipio:nome, redecNome:redec})
+      .catch(()=>{});
+  }
 }
 function exportMunicipalities(){
   downloadJson("municipios_cadastrados_plancon_rj.json", {exportedAt:new Date().toISOString(), municipios:getMunicipalityRegistry()});
