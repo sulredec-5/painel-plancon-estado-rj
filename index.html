@@ -540,6 +540,57 @@
 
         <div class="upload-unlocked" id="uploadUnlocked">
           <div class="upload-note"><strong>Registro institucional:</strong> registre novas versões de PLANCON mantendo o arquivo original na pasta oficial <strong>pasta institucional de PLANCONs no Google Drive</strong> no Google Drive do trabalho. O painel salva os metadados na planilha-manifesto e classifica o envio como <strong>aguardando análise</strong> até a validação técnica.<span class="drive-config-badge">Manifesto institucional</span></div>
+
+          <h3 class="internal-section-title" style="margin-top:0;">Status de entrega do PLANCON (ciclo corrente)</h3>
+          <div class="upload-note"><strong>Fonte do mapa e da tabela principal:</strong> cada linha aqui representa a situação de um município no ciclo atual. O status, versão e link alimentam diretamente o mapa, os cards e a tabela. Anos anteriores (histórico) permanecem fixos e não são editáveis aqui.</div>
+          <div class="upload-form" id="deliveryForm">
+            <div class="upload-field" style="display:none;">
+              <input type="hidden" id="deliveryEditingId" value="">
+            </div>
+            <div class="upload-field">
+              <label for="deliveryMunicipio">Município</label>
+              <select id="deliveryMunicipio"></select>
+            </div>
+            <div class="upload-field">
+              <label for="deliveryRisco">Risco / Plano</label>
+              <input type="text" id="deliveryRisco" placeholder="Ex.: Inundações · Plano geral (PLANCON)">
+            </div>
+            <div class="upload-field">
+              <label for="deliveryStatus">Status</label>
+              <select id="deliveryStatus">
+                <option value="ok">Atualizado</option>
+                <option value="warn">Verificar</option>
+                <option value="bad">Não entregue</option>
+              </select>
+            </div>
+            <div class="upload-field">
+              <label for="deliveryVersao">Versão</label>
+              <input type="text" id="deliveryVersao" placeholder="Ex.: 2025/2026">
+            </div>
+            <div class="upload-field">
+              <label for="deliveryAtualizacao">Última atualização</label>
+              <input type="text" id="deliveryAtualizacao" placeholder="Ex.: 30/01/2026">
+            </div>
+            <div class="upload-field">
+              <label for="deliveryLink">Link do PDF (Google Drive)</label>
+              <input type="url" id="deliveryLink" placeholder="https://drive.google.com/...">
+            </div>
+            <div class="upload-field">
+              <label for="deliveryResponsavel">Responsável pelo registro</label>
+              <input type="text" id="deliveryResponsavel" placeholder="Nome ou matrícula">
+            </div>
+          </div>
+          <div class="upload-actions">
+            <button class="upload-action-btn" id="deliverySaveBtn">Salvar entrega</button>
+            <button class="upload-action-btn secondary" id="deliveryClearBtn">Limpar formulário</button>
+          </div>
+          <div class="upload-inline-hint" id="deliveryStatus_msg" style="margin-top:8px;"></div>
+          <div class="upload-table-wrap" style="margin-top:14px;">
+            <table class="upload-table">
+              <thead><tr><th>Município</th><th>Risco / Plano</th><th>Versão</th><th>Atualização</th><th>Status</th><th>PDF</th><th>Ações</th></tr></thead>
+              <tbody id="deliveryQueueBody"></tbody>
+            </table>
+          </div>
           <div id="municipalityBulkSection">
             <h3 class="internal-section-title">Seleção da REDEC e municípios</h3>
             <div class="upload-note"><strong>Modelo estadual:</strong> selecione a REDEC/Regional. O painel carrega automaticamente os municípios oficiais daquela REDEC, sem necessidade de cadastrá-los um a um.</div>
@@ -1924,9 +1975,11 @@ async function syncManifestFromAppsScript(silent=false){
     const merged = mergeById(getStoredAnalyses(), incoming);
     setStoredAnalyses(merged);
     loadObsFromManifest(data.observacoes || []);
+    loadEntregasFromManifest(data.entregas || []);
     refreshAfterManifestLoad();
     const obsCount = (data.observacoes || []).length;
-    const msg = `Sincronização concluída: ${incoming.length} análise(s) e ${obsCount} observação(ões) carregada(s) da planilha-manifesto.`;
+    const entregasCount = (data.entregas || []).length;
+    const msg = `Sincronização concluída: ${incoming.length} análise(s), ${obsCount} observação(ões) e ${entregasCount} entrega(s) carregada(s) da planilha-manifesto.`;
     setSyncStatus(msg);
     if(!silent) alert(msg);
   }catch(err){
@@ -2222,6 +2275,8 @@ function openInternalModal(){
   renderMunicipalityDatalist();
   renderMunicipalityRegistry();
   renderRedecLogoSettings();
+  populateDeliveryMunicipio();
+  renderDeliveryQueue();
   populateUploadMunicipios(true);
   populateAppsScriptConfig();
   renderUploadQueue();
@@ -2816,6 +2871,189 @@ document.addEventListener("keydown", (e)=>{
   }
 });
 
+
+/* ============================================================================
+   ENTREGAS — status de entrega do PLANCON por município/ano (ciclo corrente)
+   ============================================================================ */
+const DELIVERY_EDITABLE_YEAR = CURRENT_YEAR;
+
+// Registro em memória: entregaId → objeto entrega
+let DELIVERY_REGISTRY = {};
+
+function makeEntregaId(municipio, ano){
+  return [URL_CONTEXT.redecSlug || "geral", municipio, String(ano)]
+    .map(s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""))
+    .join("_");
+}
+
+function applyEntregasToAllData(entregas){
+  // Substitui as linhas do ano editável em ALL_DATA pelas entregas cadastradas.
+  // Mantém todos os outros anos intactos.
+  const outros = ALL_DATA.filter(d => Number(d.ano) !== DELIVERY_EDITABLE_YEAR);
+  const novas = entregas
+    .filter(e => Number(e.ano) === DELIVERY_EDITABLE_YEAR)
+    .map(e => ({
+      ano: DELIVERY_EDITABLE_YEAR,
+      municipio: e.municipio,
+      risco:      e.risco      || "—",
+      versao:     e.versao     || "—",
+      atualizacao: e.atualizacao || "—",
+      status:     e.status     || "bad",
+      link:       e.link       || null
+    }));
+  ALL_DATA.length = 0;
+  ALL_DATA.push(...outros, ...novas);
+  // Recalcula ANOS/anoAtivo/DATA após injetar o ano editável
+  if(!ANOS.includes(DELIVERY_EDITABLE_YEAR)){
+    ANOS.unshift(DELIVERY_EDITABLE_YEAR);
+    anoAtivo = DELIVERY_EDITABLE_YEAR;
+  }
+  DATA = buildDataForYear(anoAtivo);
+}
+
+function loadEntregasFromManifest(entregas){
+  if(!Array.isArray(entregas)) return;
+  DELIVERY_REGISTRY = {};
+  entregas
+    .filter(e => !IS_REDEC_LOCKED || e.redecSlug === URL_CONTEXT.redecSlug)
+    .forEach(e => { DELIVERY_REGISTRY[e.entregaId] = e; });
+  applyEntregasToAllData(Object.values(DELIVERY_REGISTRY));
+  renderDeliveryQueue();
+}
+
+function populateDeliveryMunicipio(){
+  const sel = document.getElementById("deliveryMunicipio");
+  if(!sel) return;
+  sel.innerHTML = MUNICIPALITIES.map(m=>`<option value="${m.nome}">${m.nome}</option>`).join("");
+  sel.addEventListener("change", preencherEntregaExistente);
+  preencherEntregaExistente();
+}
+
+function preencherEntregaExistente(){
+  const municipio = document.getElementById("deliveryMunicipio")?.value || "";
+  const id = makeEntregaId(municipio, DELIVERY_EDITABLE_YEAR);
+  const existente = DELIVERY_REGISTRY[id];
+  if(existente){
+    document.getElementById("deliveryEditingId").value = id;
+    document.getElementById("deliveryRisco").value      = existente.risco      || "";
+    document.getElementById("deliveryStatus").value     = existente.status     || "bad";
+    document.getElementById("deliveryVersao").value     = existente.versao     || "";
+    document.getElementById("deliveryAtualizacao").value = existente.atualizacao || "";
+    document.getElementById("deliveryLink").value       = existente.link       || "";
+    document.getElementById("deliveryResponsavel").value = existente.responsavel || "";
+  } else {
+    limparFormularioEntrega(false);
+    document.getElementById("deliveryEditingId").value = "";
+  }
+}
+
+function limparFormularioEntrega(resetMunicipio=true){
+  if(resetMunicipio){ const sel = document.getElementById("deliveryMunicipio"); if(sel) sel.selectedIndex = 0; }
+  ["deliveryRisco","deliveryVersao","deliveryAtualizacao","deliveryLink","deliveryResponsavel"].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value = "";
+  });
+  const st = document.getElementById("deliveryStatus"); if(st) st.value = "bad";
+  const eid = document.getElementById("deliveryEditingId"); if(eid) eid.value = "";
+  const msg = document.getElementById("deliveryStatus_msg"); if(msg) msg.textContent = "";
+}
+
+function renderDeliveryQueue(){
+  const tbody = document.getElementById("deliveryQueueBody");
+  if(!tbody) return;
+  const items = Object.values(DELIVERY_REGISTRY).filter(e => Number(e.ano) === DELIVERY_EDITABLE_YEAR);
+  if(!items.length){
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Nenhuma entrega cadastrada para ${DELIVERY_EDITABLE_YEAR} ainda.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items
+    .sort((a,b) => String(a.municipio).localeCompare(String(b.municipio), "pt-BR"))
+    .map(e => `<tr>
+      <td class="municipio-cell">${e.municipio}</td>
+      <td class="dim">${e.risco || "—"}</td>
+      <td class="mono">${e.versao || "—"}</td>
+      <td class="mono dim">${e.atualizacao || "—"}</td>
+      <td><span class="stamp ${e.status}">${STATUS_LABEL[e.status] || e.status}</span></td>
+      <td class="linkpdf">${e.link ? `<a href="${e.link}" target="_blank" rel="noopener">Abrir ↗</a>` : '<span class="dim">—</span>'}</td>
+      <td>
+        <button type="button" class="upload-action-btn secondary" style="padding:5px 10px;font-size:11px;"
+          onclick="editarEntrega('${e.entregaId}')">Editar</button>
+        <button type="button" class="upload-action-btn danger" style="padding:5px 10px;font-size:11px;"
+          onclick="removerEntrega('${e.entregaId}')">Excluir</button>
+      </td>
+    </tr>`).join("");
+}
+
+function editarEntrega(entregaId){
+  const e = DELIVERY_REGISTRY[entregaId];
+  if(!e) return;
+  const munSel = document.getElementById("deliveryMunicipio");
+  if(munSel) munSel.value = e.municipio;
+  document.getElementById("deliveryEditingId").value  = entregaId;
+  document.getElementById("deliveryRisco").value      = e.risco      || "";
+  document.getElementById("deliveryStatus").value     = e.status     || "bad";
+  document.getElementById("deliveryVersao").value     = e.versao     || "";
+  document.getElementById("deliveryAtualizacao").value = e.atualizacao || "";
+  document.getElementById("deliveryLink").value       = e.link       || "";
+  document.getElementById("deliveryResponsavel").value = e.responsavel || "";
+  document.getElementById("deliveryForm")?.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+async function removerEntrega(entregaId){
+  if(!confirm("Remover esta entrega do painel e da planilha?")) return;
+  delete DELIVERY_REGISTRY[entregaId];
+  applyEntregasToAllData(Object.values(DELIVERY_REGISTRY));
+  renderDeliveryQueue();
+  renderStats(); renderTable(); safeInit_("updateMapColors", updateMapColors);
+  try{
+    await callAppsScriptWrite_({ tipo:"entrega_delete", entregaId });
+  }catch(err){ console.error("Falha ao remover entrega da planilha:", err); }
+}
+
+async function salvarEntregaFromForm(){
+  const municipio   = document.getElementById("deliveryMunicipio")?.value || "";
+  const risco       = (document.getElementById("deliveryRisco")?.value || "").trim() || "—";
+  const status      = document.getElementById("deliveryStatus")?.value || "bad";
+  const versao      = (document.getElementById("deliveryVersao")?.value || "").trim() || "—";
+  const atualizacao = (document.getElementById("deliveryAtualizacao")?.value || "").trim() || "—";
+  const link        = (document.getElementById("deliveryLink")?.value || "").trim();
+  const responsavel = (document.getElementById("deliveryResponsavel")?.value || "").trim();
+  const msgEl       = document.getElementById("deliveryStatus_msg");
+  const btn         = document.getElementById("deliverySaveBtn");
+
+  if(!municipio){ alert("Selecione um município."); return; }
+  if(msgEl) msgEl.textContent = "";
+
+  const entregaId = makeEntregaId(municipio, DELIVERY_EDITABLE_YEAR);
+  const entregaObj = { entregaId, redecSlug: URL_CONTEXT.redecSlug || "", municipio,
+    ano: DELIVERY_EDITABLE_YEAR, risco, versao, atualizacao, status, link, responsavel };
+
+  // Atualiza em memória e UI imediatamente
+  DELIVERY_REGISTRY[entregaId] = entregaObj;
+  applyEntregasToAllData(Object.values(DELIVERY_REGISTRY));
+  renderDeliveryQueue();
+  renderStats(); renderTable(); safeInit_("updateMapColors", updateMapColors);
+  limparFormularioEntrega(false);
+
+  if(btn){ btn.disabled = true; btn.textContent = "Enviando…"; }
+  if(msgEl) msgEl.textContent = "Enviando para a planilha…";
+  try{
+    const result = await callAppsScriptWrite_({
+      tipo: "entrega", municipio, ano: String(DELIVERY_EDITABLE_YEAR),
+      risco, versao, atualizacao, status, link, responsavel
+    });
+    if(msgEl) msgEl.textContent = (result && result.ok)
+      ? "✓ Entrega salva na planilha."
+      : "⚠ Salvo em memória, mas não enviado para a planilha: " + ((result && result.error) || "erro desconhecido");
+  }catch(err){
+    if(msgEl) msgEl.textContent = "⚠ Salvo em memória, mas não enviado para a planilha (sem conexão).";
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "Salvar entrega"; }
+  }
+}
+
+document.getElementById("deliverySaveBtn")?.addEventListener("click", salvarEntregaFromForm);
+document.getElementById("deliveryClearBtn")?.addEventListener("click", ()=>limparFormularioEntrega(true));
 
 /* ============================================================================
    OBSERVAÇÕES DE ENTREGA — aviso operacional curto por município/ano
