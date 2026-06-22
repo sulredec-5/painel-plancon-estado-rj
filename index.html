@@ -813,6 +813,38 @@ Formato obrigatório:
             </table>
           </div>
 
+          <h3 class="internal-section-title">Observações de entrega</h3>
+          <div class="upload-note"><strong>Aviso operacional curto:</strong> registre informações rápidas sobre a situação de entrega de um município (ex.: <em>"Nova versão em confecção após reunião IntegraCON"</em> ou <em>"Aguardando assinatura do Prefeito"</em>). O aviso aparece na tabela e no mapa junto ao status do município. Cada município/ano tem <strong>uma observação ativa</strong> — salvar substitui a anterior; limpar campo remove o aviso.</div>
+          <div class="upload-form">
+            <div class="upload-field">
+              <label for="obsMunicipio">Município</label>
+              <select id="obsMunicipio"></select>
+            </div>
+            <div class="upload-field">
+              <label for="obsAno">Ano de referência</label>
+              <select id="obsAno"></select>
+            </div>
+            <div class="upload-field full">
+              <label for="obsText">Observação (máx. 200 caracteres)</label>
+              <textarea id="obsText" placeholder="Ex.: Nova versão em confecção conforme reunião presencial IntegraCON." maxlength="200" rows="2" style="resize:vertical;"></textarea>
+            </div>
+            <div class="upload-field">
+              <label for="obsResponsavel">Responsável pelo registro</label>
+              <input type="text" id="obsResponsavel" placeholder="Nome ou matrícula">
+            </div>
+          </div>
+          <div class="upload-actions">
+            <button class="upload-action-btn" id="obsRegisterBtn">Salvar observação</button>
+            <button class="upload-action-btn secondary" id="obsClearBtn">Limpar campo (remover aviso)</button>
+          </div>
+          <div class="upload-inline-hint" id="obsStatus" style="margin-top:8px;"></div>
+          <div class="upload-table-wrap" style="margin-top:14px;">
+            <table class="upload-table">
+              <thead><tr><th>Município</th><th>Ano</th><th>Observação</th><th>Responsável</th><th>Atualizado em</th></tr></thead>
+              <tbody id="obsQueueBody"></tbody>
+            </table>
+          </div>
+
           <h3 class="internal-section-title">Segurança — Trocar senha da Área interna</h3>
           <div class="upload-note">A senha protege o acesso de escrita exclusivamente desta REDEC. A nova senha deve ter no mínimo 8 caracteres. Guarde em local seguro — o Cap Leonardo Gonçalves (REDEC 5 Sul I) precisará ser acionado caso a senha seja esquecida.</div>
           <div class="upload-form" id="changePasswordForm">
@@ -1891,8 +1923,10 @@ async function syncManifestFromAppsScript(silent=false){
     const incoming = (data.analyses || []).map(normalizeAnalysisPayload).filter(a=>a.municipio && a.dataAnalise);
     const merged = mergeById(getStoredAnalyses(), incoming);
     setStoredAnalyses(merged);
+    loadObsFromManifest(data.observacoes || []);
     refreshAfterManifestLoad();
-    const msg = `Sincronização concluída: ${incoming.length} análise(s) carregada(s) da planilha-manifesto.`;
+    const obsCount = (data.observacoes || []).length;
+    const msg = `Sincronização concluída: ${incoming.length} análise(s) e ${obsCount} observação(ões) carregada(s) da planilha-manifesto.`;
     setSyncStatus(msg);
     if(!silent) alert(msg);
   }catch(err){
@@ -2194,6 +2228,8 @@ function openInternalModal(){
   populateAnalysisMunicipios();
   renderAnalysisCriteriaFields();
   renderAnalysisQueue();
+  populateObsSelects();
+  renderObsQueue();
 
   // Em modo REDEC travada pela URL, a seleção em massa de REDEC é desnecessária
   // (os municípios já vêm carregados automaticamente) e o campo livre de REDEC
@@ -2780,6 +2816,142 @@ document.addEventListener("keydown", (e)=>{
   }
 });
 
+
+/* ============================================================================
+   OBSERVAÇÕES DE ENTREGA — aviso operacional curto por município/ano
+   ============================================================================ */
+// Armazena as observações em memória durante a sessão.
+// Na inicialização, são carregadas da planilha via syncManifestFromAppsScript.
+let OBS_REGISTRY = {}; // chave: obsId → objeto observação
+
+function makeObsId(municipio, ano){
+  return [URL_CONTEXT.redecSlug || "geral", municipio, String(ano)]
+    .map(s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""))
+    .join("_");
+}
+
+function applyObsToData(obs){
+  // Aplica/remove o texto de observação em DATA para refletir imediatamente
+  // na tabela e no mapa sem precisar recarregar da planilha.
+  if(!obs || !obs.municipio || !obs.ano) return;
+  DATA.forEach(row => {
+    if(row.municipio === obs.municipio && String(row.ano) === String(obs.ano)){
+      if(obs.observacao) row.obs = obs.observacao;
+      else delete row.obs;
+    }
+  });
+}
+
+function loadObsFromManifest(observacoes){
+  // Chamada por syncManifestFromAppsScript ao carregar dados da planilha.
+  // Filtra só as observações da REDEC ativa e aplica em DATA.
+  if(!Array.isArray(observacoes)) return;
+  OBS_REGISTRY = {};
+  observacoes
+    .filter(o => !IS_REDEC_LOCKED || o.redecSlug === URL_CONTEXT.redecSlug)
+    .forEach(o => {
+      OBS_REGISTRY[o.obsId] = o;
+      applyObsToData(o);
+    });
+  renderObsQueue();
+}
+
+function populateObsSelects(){
+  const munSel = document.getElementById("obsMunicipio");
+  const anoSel = document.getElementById("obsAno");
+  if(!munSel || !anoSel) return;
+  munSel.innerHTML = MUNICIPALITIES.map(m=>`<option value="${m.nome}">${m.nome}</option>`).join("");
+  const anos = [2022, 2023, 2024, 2025, 2026];
+  anoSel.innerHTML = anos.map(a=>`<option value="${a}"${a===anoAtivo?" selected":""}>${a}</option>`).join("");
+  // Preenche texto se já houver observação salva para a seleção atual
+  munSel.addEventListener("change", preencherObsExistente);
+  anoSel.addEventListener("change", preencherObsExistente);
+  preencherObsExistente();
+}
+
+function preencherObsExistente(){
+  const municipio = document.getElementById("obsMunicipio")?.value || "";
+  const ano = document.getElementById("obsAno")?.value || "";
+  const id = makeObsId(municipio, ano);
+  const existente = OBS_REGISTRY[id];
+  const txtEl = document.getElementById("obsText");
+  const respEl = document.getElementById("obsResponsavel");
+  if(txtEl) txtEl.value = (existente && existente.observacao) || "";
+  if(respEl) respEl.value = (existente && existente.responsavel) || "";
+}
+
+function renderObsQueue(){
+  const tbody = document.getElementById("obsQueueBody");
+  if(!tbody) return;
+  const items = Object.values(OBS_REGISTRY).filter(o => o.observacao);
+  if(!items.length){
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5">Nenhuma observação registrada.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items
+    .sort((a,b) => String(a.municipio).localeCompare(String(b.municipio), "pt-BR"))
+    .map(o => `<tr>
+      <td>${o.municipio}</td>
+      <td>${o.ano}</td>
+      <td>${o.observacao}</td>
+      <td class="dim">${o.responsavel || "—"}</td>
+      <td class="dim">${o.timestamp ? new Date(o.timestamp).toLocaleString("pt-BR") : "—"}</td>
+    </tr>`).join("");
+}
+
+async function saveObservacao(municipio, ano, observacao, responsavel){
+  const obsId = makeObsId(municipio, ano);
+  const obsObj = { obsId, redecSlug: URL_CONTEXT.redecSlug || "", municipio, ano: String(ano), observacao: observacao.trim(), responsavel: responsavel.trim(), timestamp: new Date().toISOString() };
+
+  // Atualiza em memória e na UI imediatamente (sem esperar a rede)
+  if(obsObj.observacao) OBS_REGISTRY[obsId] = obsObj;
+  else delete OBS_REGISTRY[obsId];
+  applyObsToData(obsObj);
+  renderObsQueue();
+  renderStats(); renderTable(); safeInit_("updateMapColors", updateMapColors);
+
+  const statusEl = document.getElementById("obsStatus");
+  if(statusEl) statusEl.textContent = "Enviando para a planilha…";
+
+  try{
+    const result = await callAppsScriptWrite_({
+      tipo: "observacao",
+      municipio,
+      ano: String(ano),
+      observacao: obsObj.observacao,
+      responsavel: obsObj.responsavel
+    });
+    if(statusEl) statusEl.textContent = (result && result.ok)
+      ? (obsObj.observacao ? "✓ Observação salva na planilha." : "✓ Observação removida da planilha.")
+      : "⚠ Salvo em memória, mas não enviado para a planilha: " + ((result && result.error) || "erro desconhecido");
+  }catch(err){
+    if(statusEl) statusEl.textContent = "⚠ Salvo em memória, mas não enviado para a planilha (sem conexão).";
+  }
+}
+
+async function registerObsFromForm(){
+  const municipio = document.getElementById("obsMunicipio")?.value || "";
+  const ano       = document.getElementById("obsAno")?.value || "";
+  const texto     = (document.getElementById("obsText")?.value || "").trim();
+  const resp      = (document.getElementById("obsResponsavel")?.value || "").trim();
+  if(!municipio){ alert("Selecione um município."); return; }
+  if(!texto){ alert("Escreva o texto da observação antes de salvar, ou use 'Limpar campo' para remover."); return; }
+  await saveObservacao(municipio, ano, texto, resp);
+}
+
+async function clearObsFromForm(){
+  const municipio = document.getElementById("obsMunicipio")?.value || "";
+  const ano       = document.getElementById("obsAno")?.value || "";
+  const resp      = (document.getElementById("obsResponsavel")?.value || "").trim();
+  if(!municipio){ alert("Selecione um município."); return; }
+  const txtEl = document.getElementById("obsText");
+  if(txtEl) txtEl.value = "";
+  await saveObservacao(municipio, ano, "", resp);
+}
+
+document.getElementById("obsRegisterBtn")?.addEventListener("click", registerObsFromForm);
+document.getElementById("obsClearBtn")?.addEventListener("click", clearObsFromForm);
 
 /* ============================================================================
    TROCA DE SENHA DA ÁREA INTERNA (por REDEC)
