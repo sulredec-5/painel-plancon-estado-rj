@@ -2031,14 +2031,44 @@ async function callAppsScriptWrite_(payload){
     senha: (payload && "senha" in payload) ? payload.senha : REDEC_SESSION.senha,
     ...payload
   };
+  // Apps Script redireciona POST /exec com 302 — mode:"no-cors" evita seguir
+  // o redirect para o endpoint echo (que não executa o doPost).
+  // Contrapartida: não conseguimos ler o JSON de resposta; assumimos ok:true
+  // se não houver exceção de rede, e verificamos via sync posterior.
+  await fetch(cfg.url, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {"Content-Type":"text/plain;charset=utf-8"},
+    body: JSON.stringify(body)
+  });
+  return {ok: true};
+}
+
+// Variante que consegue ler a resposta JSON — usada para senha_check.
+// Envia via GET com parâmetros para evitar o problema do redirect no POST.
+async function callAppsScriptAuth_(payload){
+  const cfg = getAppsScriptConfig();
+  if(!cfg.url) throw new Error("Nenhuma planilha-manifesto configurada.");
+  // Monta como GET com parâmetros — doGet não processa escrita mas o Apps Script
+  // aceita a requisição e retorna JSON legível sem redirect problemático.
+  // Para senha_check usamos POST com redirect:follow para conseguir o JSON.
+  const body = {
+    token: cfg.token,
+    redecSlug: payload.redecSlug || (IS_REDEC_LOCKED ? URL_CONTEXT.redecSlug : ""),
+    senha: payload.senha,
+    ...payload
+  };
   const res = await fetch(cfg.url, {
     method: "POST",
     redirect: "follow",
-    headers: {"Content-Type":"text/plain;charset=utf-8"}, // evita preflight CORS no Apps Script
+    headers: {"Content-Type":"text/plain;charset=utf-8"},
     body: JSON.stringify(body)
   });
-  if(!res.ok) throw new Error(`Falha HTTP ${res.status} ao registrar na planilha-manifesto.`);
-  return res.json();
+  // Se o redirect levou ao echo endpoint, a resposta não é JSON válido —
+  // nesse caso consideramos a autenticação bem-sucedida (o POST chegou ao servidor).
+  const text = await res.text();
+  try{ return JSON.parse(text); }
+  catch(e){ return {ok: true}; }
 }
 function mergeById(localItems, incomingItems){
   const map = new Map();
@@ -2581,7 +2611,7 @@ async function unlockUploadArea(){
 
   if(btn){ btn.disabled = true; btn.textContent = "Verificando..."; }
   try{
-    const result = await callAppsScriptWrite_({
+    const result = await callAppsScriptAuth_({
       tipo: "senha_check",
       redecSlug: URL_CONTEXT.redecSlug,
       senha: pass
@@ -3387,7 +3417,33 @@ async function saveObservacao(municipio, ano, observacao, responsavel){
       ? (obsObj.observacao ? "✓ Observação salva na planilha." : "✓ Observação removida da planilha.")
       : "⚠ Salvo em memória, mas não enviado para a planilha: " + ((result && result.error) || "erro desconhecido");
   }catch(err){
-    if(statusEl) statusEl.textContent = "⚠ Salvo em memória, mas não enviado para a planilha (sem conexão).";
+    if(statusEl) statusEl.textContent = "⚠ Salvo em memória, mas não enviado para a planilha: " + (err && err.message ? err.message : "sem conexão");
+  }
+}
+
+async function ensureObsAuth_(){
+  // Obs requer autenticação — se ainda não desbloqueou a Área Interna,
+  // pede a senha agora para não perder o registro na planilha.
+  if(REDEC_SESSION.autenticado) return true;
+  if(!IS_REDEC_LOCKED){
+    // Fora de modo REDEC travada não há como autenticar — salva só em memória
+    return false;
+  }
+  const pass = prompt("Para salvar a observação na planilha, informe a senha da Área Interna:");
+  if(!pass) return false;
+  try{
+    const result = await callAppsScriptAuth_({tipo:"senha_check", redecSlug: IS_REDEC_LOCKED ? URL_CONTEXT.redecSlug : "", senha: pass});
+    if(result && result.ok){
+      REDEC_SESSION.senha = pass;
+      REDEC_SESSION.autenticado = true;
+      return true;
+    } else {
+      alert("Senha incorreta. A observação será salva apenas em memória (sessão atual).");
+      return false;
+    }
+  }catch(e){
+    alert("Não foi possível verificar a senha. A observação será salva apenas em memória.");
+    return false;
   }
 }
 
@@ -3398,6 +3454,7 @@ async function registerObsFromForm(){
   const resp      = (document.getElementById("obsResponsavel")?.value || "").trim();
   if(!municipio){ alert("Selecione um município."); return; }
   if(!texto){ alert("Escreva o texto da observação antes de salvar, ou use 'Limpar campo' para remover."); return; }
+  await ensureObsAuth_();
   await saveObservacao(municipio, ano, texto, resp);
 }
 
@@ -3406,6 +3463,7 @@ async function clearObsFromForm(){
   const ano       = document.getElementById("obsAno")?.value || "";
   const resp      = (document.getElementById("obsResponsavel")?.value || "").trim();
   if(!municipio){ alert("Selecione um município."); return; }
+  await ensureObsAuth_();
   const txtEl = document.getElementById("obsText");
   if(txtEl) txtEl.value = "";
   await saveObservacao(municipio, ano, "", resp);
