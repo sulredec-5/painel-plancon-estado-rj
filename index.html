@@ -2031,43 +2031,31 @@ async function callAppsScriptWrite_(payload){
     senha: (payload && "senha" in payload) ? payload.senha : REDEC_SESSION.senha,
     ...payload
   };
-  // Apps Script com no-cors + text/plain: o doPost executa no servidor
-  // antes do redirect 302. Não conseguimos ler a resposta (opaque),
-  // mas a gravação ocorre. Confirmamos via sync posterior.
-  await fetch(cfg.url, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {"Content-Type": "text/plain;charset=utf-8"},
-    body: JSON.stringify(body)
-  });
-  return {ok: true};
+  // Usa GET com action=write para evitar o redirect 302 do doPost.
+  // O doGet processa a escrita via parâmetro "data" sem redirect.
+  const sep = cfg.url.includes("?") ? "&" : "?";
+  const url = cfg.url + sep + "action=write&data=" + encodeURIComponent(JSON.stringify(body));
+  const res = await fetch(url, {method:"GET", redirect:"follow"});
+  if(!res.ok) throw new Error("Falha HTTP " + res.status);
+  return res.json();
 }
 
-// Variante que consegue ler a resposta JSON — usada para senha_check.
-// Envia via GET com parâmetros para evitar o problema do redirect no POST.
+// Variante que lê a resposta JSON — usada para senha_check.
+// Usa o mesmo mecanismo GET com action=write (sem redirect problemático).
 async function callAppsScriptAuth_(payload){
   const cfg = getAppsScriptConfig();
   if(!cfg.url) throw new Error("Nenhuma planilha-manifesto configurada.");
-  // Monta como GET com parâmetros — doGet não processa escrita mas o Apps Script
-  // aceita a requisição e retorna JSON legível sem redirect problemático.
-  // Para senha_check usamos POST com redirect:follow para conseguir o JSON.
   const body = {
     token: cfg.token,
     redecSlug: payload.redecSlug || (IS_REDEC_LOCKED ? URL_CONTEXT.redecSlug : ""),
     senha: payload.senha,
     ...payload
   };
-  const res = await fetch(cfg.url, {
-    method: "POST",
-    redirect: "follow",
-    headers: {"Content-Type":"text/plain;charset=utf-8"},
-    body: JSON.stringify(body)
-  });
-  // Se o redirect levou ao echo endpoint, a resposta não é JSON válido —
-  // nesse caso consideramos a autenticação bem-sucedida (o POST chegou ao servidor).
-  const text = await res.text();
-  try{ return JSON.parse(text); }
-  catch(e){ return {ok: true}; }
+  const sep = cfg.url.includes("?") ? "&" : "?";
+  const url = cfg.url + sep + "action=write&data=" + encodeURIComponent(JSON.stringify(body));
+  const res = await fetch(url, {method:"GET", redirect:"follow"});
+  if(!res.ok) throw new Error("Falha HTTP " + res.status);
+  return res.json();
 }
 function mergeById(localItems, incomingItems){
   const map = new Map();
