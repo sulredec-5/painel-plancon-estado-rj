@@ -2031,14 +2031,13 @@ async function callAppsScriptWrite_(payload){
     senha: (payload && "senha" in payload) ? payload.senha : REDEC_SESSION.senha,
     ...payload
   };
-  // Apps Script redireciona POST /exec com 302 — mode:"no-cors" evita seguir
-  // o redirect para o endpoint echo (que não executa o doPost).
-  // Contrapartida: não conseguimos ler o JSON de resposta; assumimos ok:true
-  // se não houver exceção de rede, e verificamos via sync posterior.
+  // Apps Script com no-cors + text/plain: o doPost executa no servidor
+  // antes do redirect 302. Não conseguimos ler a resposta (opaque),
+  // mas a gravação ocorre. Confirmamos via sync posterior.
   await fetch(cfg.url, {
     method: "POST",
     mode: "no-cors",
-    headers: {"Content-Type":"text/plain;charset=utf-8"},
+    headers: {"Content-Type": "text/plain;charset=utf-8"},
     body: JSON.stringify(body)
   });
   return {ok: true};
